@@ -1,0 +1,24 @@
+---
+- name: "Is software source `{{ nginx_vars.source }}` supported?"
+  assert:
+    that: nginx_vars.source in ['epel', 'rhscl', 'upstream']
+    msg: |-
+      Three software sources are supported:
+        EPEL     - easy to use and known good, recommended and the default
+        upstream - easy to use, bleeding edge: the latest, sometimes buggy
+        RHSCL    - stable, multiple versions available, difficult to use
+      Choose one of these or undefine `nginx_vars.source` to use EPEL
+
+- name: Is desired NGINX version available?
+  assert:
+    that: 
+      - nginx_vars.version is defined
+      - nginx_vars.version|string in ['1.12', '1.14']
+    msg: |-
+      As of April 2019 RHSCL offers the following NGINX versions:
+        1.6, 1.8, 1.10 - outdated, not supported
+        1.12 - supported, tested
+        1.14 - supported, not thoroughly tested
+      There is no default value for this variable as future updates to this
+      playbook might initiate version change which is complicated with RHSCL
+  when: nginx_vars.source == 'rhscl'

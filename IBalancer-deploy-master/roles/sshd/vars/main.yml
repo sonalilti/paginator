@@ -1,0 +1,2 @@
+---
+sshd_vars: "{{ sshd_arrangement|combine(sshd_override|d({})|combine(sshd|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

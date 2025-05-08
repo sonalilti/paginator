@@ -1,0 +1,13 @@
+- name: procure client packages
+  yum:
+    pkg:
+      - cifs-utils
+    state: present
+
+- name: procure server packages
+  yum:
+    pkg:
+      - samba
+      - samba-winbind-clients
+    state: present
+  when: samba_vars.server

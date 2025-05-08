@@ -1,0 +1,18 @@
+---
+- name: "Is software source `{{ redis_vars.source }}` supported?"
+  assert:
+    that: redis_vars.source in [ 'rhscl', 'epel']
+    msg: |-
+      Two software sources are supported:
+        EPEL  - easy to use, the default, recommended
+        RHSCL - stable, flexible but not trivial to use
+      Choose one of these or undefine `redis_vars.source` to use EPEL
+
+- name: Is desired Redis version available?
+  assert:
+    that:
+      - redis_vars.version is defined
+      - redis_vars.version|string == '3.2'
+    msg: |-
+      On April 2019 RHSCL offers only one Redis version: 3.2
+  when: redis_vars.source == 'rhscl'

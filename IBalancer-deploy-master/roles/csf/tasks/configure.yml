@@ -1,0 +1,33 @@
+---
+- name: csf.allow
+  template:
+    src: csf.allow.j2
+    dest: /etc/csf/csf.allow
+    mode: 0600
+  notify: Apply config
+
+- name: csf.ignore
+  template:
+    src: csf.ignore.j2
+    dest: /etc/csf/csf.ignore
+    mode: 0600
+  notify: Apply config
+
+- name: csf.conf
+  template:
+    src: csf.conf.j2
+    dest: /etc/csf/csf.conf
+    mode: 0600
+  notify: Apply config
+
+- name: csfpre.sh
+  copy:
+    dest: /etc/csf/csfpre.sh
+    content: "{{ csf_vars.pre }}"
+  notify: Apply config
+
+- name: csfpost.sh
+  copy:
+    dest: /etc/csf/csfpost.sh
+    content: "{{ csf_vars.post }}"
+  notify: Apply config

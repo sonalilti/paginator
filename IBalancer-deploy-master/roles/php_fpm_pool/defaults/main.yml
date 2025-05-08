@@ -1,0 +1,31 @@
+---
+pool_arrangement:
+  php_version: "73"
+  user: "nginx"
+  group: "nginx"
+  listen: "127.0.0.1:9000"
+  listen_allowed_clients: "127.0.0.1"
+  listen_sock_owner: ""
+  listen_sock_group: ""
+  listen_sock_mode: ""
+  listen_sock_acl_users: ""
+  listen_sock_acl_groups: ""
+  pm: "dynamic"
+  pm_max_children: 50
+  pm_start_servers: 5
+  pm_min_spare_servers: 5
+  pm_max_spare_servers: 35
+  pm_idle_timeout: 120
+  pm_max_requests: 0
+  pm_status_path: ""
+  ping_path: ""
+  ping_response: "salute"
+  log_errors: "on"
+  session_save_handler: "files"
+  env_hostname: "$HOSTNAME"
+  env_path: "/usr/local/bin:/usr/bin:/bin"
+  env_tmp: /tmp
+  env_tmpdir: /tmp
+  env_temp: /tmp
+  admin_extra_flags: []
+  admin_extra_values: []

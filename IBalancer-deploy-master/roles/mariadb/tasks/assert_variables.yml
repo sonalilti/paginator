@@ -1,0 +1,27 @@
+---
+- name: "Is software source `{{ mariadb_vars.source }}` supported?"
+  assert:
+    that: mariadb_vars.source in [ 'rhscl', 'upstream']
+    msg: |-
+      Two software sources are supported:
+        upstream - easy to use and flexible, the default, recommended
+        RHSCL    - stable, multiple versions available, difficult to use
+      Choose one of these or undefine `mariadb_vars.source` to use upstream
+
+- name: Is desired MariaDB version available?
+  assert:
+    that:
+      - mariadb_vars.version is defined
+      - >
+        mariadb_vars.source == 'rhscl' and
+        mariadb_vars.version|string in ['10.0', '10.1', '10.2', '10.3', '10.5']
+        or
+        mariadb_vars.source == 'upstream' and
+        mariadb_vars.version|string in ['10.0', '10.1', '10.2', '10.3', '10.4', '10.5', '10.6', '10.7']
+    msg: |-
+      On April 2019
+        RHSCL offers the following MariaDB versions:
+          10.0, 10.1 - oldstable, not tested
+                10.2 - supported and tested, recommended and the default
+      Default version is 10.2. It is the latest supported by Red Hat on RHSCL.
+  when: mariadb_vars.source == 'rhscl'

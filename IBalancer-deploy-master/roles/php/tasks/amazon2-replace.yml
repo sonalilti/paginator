@@ -1,0 +1,16 @@
+- name: Detect active PHP version
+  shell: >-
+    amazon-linux-extras | egrep -o php_vars.+enabled | cut -d= -f1
+  register: amzn_active_php
+
+- name: "Enable PHP {{php_vars.version[0]}}.{{php_vars.version[1]}} packages with `amazon-linux-extras`"
+  command: "{{ item }}"
+  loop:
+    - "amazon-linux-extras disable {{ amzn_active_php_vars.stdout }}"
+    - "amazon-linux-extras enable php{{php_vars.version[0]}}.{{php_vars.version[1]}}"
+
+- name: Apply changes
+  yum:
+    name: '*'
+    state: latest
+    update_cache: True

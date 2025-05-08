@@ -1,0 +1,43 @@
+#cloud-config
+hostname: chrome${number}
+fqdn: chrome${number}.in.${local_zone}
+prefer_fqdn_over_hostname: true
+write_files:
+  - path: /etc/silpub/designer/automount
+    content: |
+      SDMNT_SOURCE="//smb.in.${local_zone}/Shared"
+      SDMNT_FSTYPE=cifs
+      SDMNT_OPTIONS="uid=spidsn,gid=spidsn,user=nginx,pass=anonymous,_netdev,x-systemd.automount"
+    owner: 'root:root'
+    permissions: '0640'
+  - path: /etc/silpub/designer/service/chrome.args
+    content: |
+      ARGS='--node-port=33365 --node-name=chrome${number}.in.${local_zone}
+    owner: 'root:root'
+    permissions: '0644'
+swap:
+  filename: /.swapfile
+  size: auto
+  maxsize: 8589934592
+yum_repos:
+  silpub-public:
+    name: Silicon Publishing public repository
+    baseurl: https://dist.silcn.co/pulp/content/spi/Library/custom/Designer/public/
+    gpgkey: https://dist.silcn.co/pulp/content/spi/Library/custom/Designer/files/rpmsign.pub
+    enabled: true
+    gpgcheck: true
+  google-chrome:
+    name: google-chrome
+    baseurl: https://dl.google.com/linux/chrome/rpm/stable/x86_64
+    gpgkey: https://dl.google.com/linux/linux_signing_key.pub
+    enabled: true
+    gpgcheck: true
+runcmd:
+- dnf install -y spidsn-chrome
+- firewall-cmd --reload
+- firewall-cmd --add-service=spidsn-chrome --permanent
+power_state:
+  delay: now
+  mode: reboot
+  message: "Finalizing setup with reboot"
+  timeout: 10

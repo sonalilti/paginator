@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policymap [
+  <!ELEMENT policymap (policy)+>
+  <!ATTLIST policymap xmlns CDATA #FIXED ''>
+  <!ELEMENT policy EMPTY>
+  <!ATTLIST policy xmlns CDATA #FIXED '' domain NMTOKEN #REQUIRED
+    name NMTOKEN #IMPLIED pattern CDATA #IMPLIED rights NMTOKEN #IMPLIED
+    stealth NMTOKEN #IMPLIED value CDATA #IMPLIED>
+]>
+<policymap>
+{% if ims_vars.policy.system and ims_vars.policy.system.precision is defined %}
+  <policy domain="system" name="precision" value="{{ ims_vars.policy.system.precision }}"/>
+{% endif %}
+{% if ims_vars.policy.system and ims_vars.policy.system.memorymap is defined %}
+  <policy domain="system" name="memory-map" value="{{ ims_vars.policy.system.memorymap }}"/>
+{% endif %}
+{% if ims_vars.policy.system and ims_vars.policy.system.maxmemoryrequest is defined %}
+  <policy domain="system" name="max-memory-request" value="{{ ims_vars.policy.system.maxmemoryrequest }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.temporarypath is defined %}
+  <policy domain="resource" name="temporary-path" value="{{ ims_vars.policy.resource.temporarypath }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.memory is defined %}
+  <policy domain="resource" name="memory" value="{{ ims_vars.policy.resource.memory }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.map is defined %}
+  <policy domain="resource" name="map" value="{{ ims_vars.policy.resource.map }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.width is defined %}
+  <policy domain="resource" name="width" value="{{ ims_vars.policy.resource.width }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.height is defined %}
+  <policy domain="resource" name="height" value="{{ ims_vars.policy.resource.height }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.listlength is defined %}
+  <policy domain="resource" name="list-length" value="{{ ims_vars.policy.resource.listlength }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.area is defined %}
+  <policy domain="resource" name="area" value="{{ ims_vars.policy.resource.area }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.disk is defined %}
+  <policy domain="resource" name="disk" value="{{ ims_vars.policy.resource.disk }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.file is defined %}
+  <policy domain="resource" name="file" value="{{ ims_vars.policy.resource.file }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.thread is defined %}
+  <policy domain="resource" name="thread" value="{{ ims_vars.policy.resource.thread }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.throttle is defined %}
+  <policy domain="resource" name="throttle" value="{{ ims_vars.policy.resource.throttle }}"/>
+{% endif %}
+{% if ims_vars.policy.resource and ims_vars.policy.resource.time is defined %}
+  <policy domain="resource" name="time" value="{{ ims_vars.policy.resource.time }}"/>
+{% endif %}
+{% if ims_vars.policy.cache and ims_vars.policy.cache.memorymap is defined %}
+  <policy domain="cache" name="memory-map" value="{{ ims_vars.policy.cache.memorymap }}"/>
+{% endif %}
+{% if ims_vars.policy.cache and ims_vars.policy.cache.synchronize is defined %}
+  <policy domain="cache" name="synchronize" value="{{ ims_vars.policy.cache.synchronize }}"/>
+{% endif %}
+{% if ims_vars.policy.cache and ims_vars.policy.cache.sharedsecret is defined %}
+  <policy domain="cache" name="shared-secret" value="{{ ims_vars.policy.cache.sharedsecret.passphrase }}" stealth="{{ ims_vars.policy.cache.sharedsecret.stealth|d('true') }}"/>
+{% endif %}
+{% for coder in ims_vars.policy.coder %}
+  <policy domain="coder" rights="{{ coder.rights }}" pattern="{{ coder.pattern }}" />
+{% endfor %}
+{% for module in ims_vars.policy.module %}
+  <policy domain="module" rights="{{ module.rights }}" pattern="{{ module.pattern }}" />
+{% endfor %}
+{% for delegate in ims_vars.policy.delegate %}
+  <policy domain="delegate" rights="{{ delegate.rights }}" pattern="{{ delegate.pattern }}" />
+{% endfor %}
+{% for path in ims_vars.policy.path  %}
+  <policy domain="path" rights="{{ path.rights }}" pattern="{{ path.pattern }}" />
+{% endfor %}
+</policymap>

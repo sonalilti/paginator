@@ -1,0 +1,88 @@
+---
+- name: "Enable PHP {{php_vars.version[0]}}.{{php_vars.version[1]}} packages with `amazon-linux-extras`"
+  command: "amazon-linux-extras enable php{{php_vars.version[0]}}.{{php_vars.version[1]}}"
+  changed_when: False
+  ignore_errors: True
+  register: amzn_extras
+
+- name: "Attempt upgrade to PHP version {{ php_vars.version }}"
+  include_tasks: "{{ playbook_dir }}/roles/{{ role_name }}/tasks/{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}-replace.yml"
+  when: amzn_extras.failed
+
+- name: "Procure php{{ php_vars.version }} binaries"
+  yum:
+    pkg:
+      - php
+      - php-pear
+    state: "{{ php_vars.state }}"
+
+- name: "Procure php{{ php_vars.version }} FPM daemon"
+  yum:
+    pkg: php-fpm
+    state: "{{ php_vars.state }}"
+  when: php_vars.with_fpm
+
+- name: "Procure php{{ php_vars.version }} debug packages"
+  yum:
+    pkg:
+      - php-dbg
+    state: present
+  when: php_vars.with_devel
+
+- name: Make sure debug packages are absent in Production
+  yum:
+    pkg:
+      - php-dbg
+    state: absent
+  when: not php_vars.with_devel
+
+- name: "Procure php{{ php_vars.version }} devel packages required by pecl"
+  yum:
+    pkg:
+      - php-devel
+      - gcc
+      - cpp
+    state: "{{ php_vars.state }}"
+
+- name: "Compose list of core php{{ php_vars.version }} modules"
+  set_fact:
+    corem: >
+      {% for item in php_vars.core_modules %}
+      php-{{ item }} 
+      {% endfor %}
+
+- name: "Procure core modules"
+  yum:
+    pkg: "{{ corem.split() }}"
+    state: "{{ php_vars.state }}"
+
+- name: "Compose list of extra php{{ php_vars.version }} modules"
+  set_fact:
+    xtram: >
+      {% for item in php_vars.extra_modules %}
+      php-{{ item }} 
+      {% endfor %}
+
+- name: Procure extra modules (yum)
+  yum:
+    pkg: "{{ xtram.split() }}"
+    state: "{{ php_vars.state }}"
+
+- name: Procure extra modules (pecl)
+  pear:
+    name: pecl/msgpack
+    state: present
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Enable extra modules
+  copy:
+    content: extension=msgpack.so
+    dest: /etc/php_vars.d/50-msgpack.ini
+
+- name: Set optional UMask
+  copy:
+    content: |
+      [Service]
+      UMask={{ php_vars.umask }}
+    dest: "/etc/systemd/system/php-fpm.service.d/override.conf"
+  when: php_vars.umask is defined and php_vars.umask

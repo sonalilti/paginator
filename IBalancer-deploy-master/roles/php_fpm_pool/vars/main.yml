@@ -1,0 +1,2 @@
+---
+pool_vars: "{{ pool_arrangement|combine(pool_override|d({})|combine(pool|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

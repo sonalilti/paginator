@@ -1,0 +1,16 @@
+---
+- name: "Advertise availability of this PHP version via /etc/motd"
+  lineinfile:
+    path: "/etc/motd"
+    line: "php{{ php_vars.version }} is available: issue command `source /opt/rh/rh-php{{ php_vars.version }}/enable` to access CLI"
+  when: 
+    - php_vars.advertise
+    - php_vars.state != "absent"
+    - php_vars.state != "removed"
+
+- name: "Unadvertise availability of this PHP version via /etc/motd in case of removal"
+  lineinfile:
+    path: "/etc/motd"
+    line: "php{{ php_vars.version }} is available: issue command `source /opt/rh/rh-php{{ php_vars.version }}/enable` to access CLI"
+    state: absent
+  when: php_vars.state == "absent" or php_vars.state == "removed"

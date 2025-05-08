@@ -1,0 +1,2 @@
+---
+php_vars: "{{ php_arrangement|combine(php_override|d({})|combine(php|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

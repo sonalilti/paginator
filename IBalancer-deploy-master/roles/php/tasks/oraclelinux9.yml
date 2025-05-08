@@ -1,0 +1,60 @@
+---
+- name: Enable php:8.1 module
+  command: dnf module -y enable php:8.1
+
+- name: Compose package list
+  set_fact:
+    core: >
+      php
+      php-fpm
+      php-pear
+      php-devel
+      gcc
+      cpp
+      {% for item in php_vars.core_modules %}
+      php-{{ item }} 
+      {% endfor %}
+      {% for item in php_vars.extra_modules %}
+      php-{{ item }} 
+      {% endfor %}
+
+- name: Procure packages
+  yum:
+    name: "{{ core.split()|difference(['php-xmlrpc']) }}"
+    state: "{{ php_vars.state }}"
+
+- name: Procure php debug packages if requested
+  yum:
+    pkg:
+      - php-dbg
+    state: present
+  when: php_vars.with_devel
+
+- name: Make sure debug packages are absent in Production
+  yum:
+    pkg:
+      - php-dbg
+    state: absent
+  when: not php_vars.with_devel
+
+- name: Procure 'msgpack' php module
+  pear:
+    name: pecl/msgpack
+    state: present
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Enable 'msgpack' php module
+  copy:
+    content: extension=msgpack.so
+    dest: /etc/php.d/50-msgpack.ini
+
+- name: Set up service overrides
+  copy:
+    dest: /etc/systemd/system/php-fpm.service.d/override.conf
+    content: |
+      [Service]
+      OOMPolicy=continue
+      Restart=always
+      {% if php_vars.umask is defined and php_vars.umask %}
+      UMask={{ php_vars.umask }}
+      {%- endif %}

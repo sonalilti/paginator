@@ -1,0 +1,15 @@
+---
+- name: "Place virtualhost config file for {{ vhost_vars.server_name }}"
+  vars:
+    newline: "\n"
+  template:
+    src: virtualhost.conf.j2
+    dest: >-
+      {%- if vhost_vars.ssl -%}
+      {{ nginx_confdir|d('/etc/nginx') }}/conf.d/ssl.{{ vhost_vars.conf_file|d(vhost_vars.server_name) }}.conf
+      {%- else -%}
+      {{ nginx_confdir|d('/etc/nginx') }}/conf.d/{{ vhost_vars.conf_file|d(vhost_vars.server_name) }}.conf
+      {%- endif %}
+    owner: root
+    group: root
+    mode: 0644

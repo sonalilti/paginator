@@ -1,0 +1,28 @@
+---
+- name: Make sure Red Hat Software Collections are available
+  yum:
+    pkg: centos-release-scl
+  when: skipreposetup is not defined or not skipreposetup
+
+- name: Procure nginx binaries
+  yum:
+    pkg: >
+      rh-nginx{{ nginx_vars.version|string|replace('.', '') }}
+
+- set_fact:
+    nginx_confdir: "/etc/opt/rh/rh-nginx{{ nginx_vars.version|string|replace('.', '') }}/nginx"
+- set_fact:
+    nginx_service: "rh-nginx{{ nginx_vars.version|string|replace('.', '') }}-nginx"
+- set_fact:
+    nginx_modules: "/opt/rh/rh-nginx{{ nginx_vars.version|string|replace('.', '') }}/root/usr/share/nginx/modules"
+- set_fact:
+    nginx:
+      pid: "/var/opt/rh/rh-nginx{{ nginx_vars.version|string|replace('.', '') }}/run/nginx/nginx_vars.pid"
+
+- name: Procure `/var/log/nginx` directory
+  file:
+    path: /var/log/nginx
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: 0755

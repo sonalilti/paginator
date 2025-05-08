@@ -1,0 +1,23 @@
+---
+- name: Make sure yum-utils are present
+  yum:
+    name: yum-utils
+  when: skipreposetup is not defined or not skipreposetup
+
+- name: Procure upstream NGINX repository
+  yum_repository:
+    name: openresty
+    gpgkey: https://openresty.org/package/pubkey.gpg
+    gpgcheck: False
+    repo_gpgcheck: False
+    baseurl: https://openresty.org/package/centos/$releasever/$basearch
+    description: OpenResty Open Source Repository for CentOS
+    enabled: True
+    enablegroups: True
+    state: present
+  when: skipreposetup is not defined or not skipreposetup
+
+- name: Procure packages
+  yum:
+    name:
+      - openresty

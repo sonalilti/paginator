@@ -1,0 +1,29 @@
+---
+# Available PHP versions: 56, 70, 71, 72, 73 (or 74 for Amazon Linux 2)
+php_arrangement:
+  version: "73" # not used in distribuitons that support appstream
+  state: present
+  with_fpm: False
+  fpm_keep_default_pool: False
+  with_apache: False
+  with_debug: False
+  with_devel: False
+  advertise: True
+  core_modules:
+    - "bcmath"
+    - "dba"
+    - "gd"
+    - "gmp"
+    - "intl"
+    - "mbstring"
+    - "mysqlnd"
+    - "odbc"
+    - "opcache"
+    - "pgsql"
+    - "soap"
+    - "xmlrpc"
+  extra_modules:
+    - "pdo"
+# php56: enchant, ldap, snmp, recode, embedded, pecl-memcache, pecl-mongo
+# php70: enchant, ldap, snmp, recode, embedded
+# php71: enchant, ldap, snmp, recode, embedded apcu, apcu-devel

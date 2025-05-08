@@ -1,0 +1,71 @@
+---
+- name: Remove existing NGINX configuration if exists
+  shell: '[ -d /etc/nginx ] && mv -v /etc/nginx /etc/_nginx || true'
+  register: confmv
+  changed_when: confmv.stdout_lines|length != 0
+
+- name: Symlink OpenResty conf dir to /etc/nginx to mimic NGINX
+  file:
+    src:   /usr/local/openresty/nginx/conf
+    dest:  /etc/nginx
+    state: link
+    owner: root
+    group: root
+
+- name: Procure missing directories
+  file:
+    path:  "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+  loop:
+    - /var/log/nginx
+    - /etc/nginx/conf.d
+
+- name: Alias OpenResty service as nginx.service
+  copy:
+    dest: /etc/systemd/system/openresty.service
+    content: |2
+      [Unit]
+      Description=The OpenResty Application Platform
+      After=syslog.target network-online.target remote-fs.target nss-lookup.target
+      Wants=network-online.target
+
+      [Service]
+      Type=forking
+      PIDFile={{ nginx_vars.pid }}
+      ExecStartPre=/usr/local/openresty/nginx/sbin/nginx -t
+      ExecStart=/usr/local/openresty/nginx/sbin/nginx
+      ExecReload=/bin/kill -s HUP $MAINPID
+      ExecStop=/bin/kill -s QUIT $MAINPID
+      PrivateTmp=true
+
+      [Install]
+      WantedBy=multi-user.target
+      Alias=nginx.service
+
+- name: Apply main config template
+  template:
+    src: nginx.conf.j2
+    dest: "{{ nginx_confdir|d('/etc/nginx') }}/nginx.conf"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Launch service
+  service:
+    name: openresty
+    enabled: True
+    state: started
+
+- name: Set up command wrapper
+  copy:
+    dest: /usr/local/sbin/nginx
+    content: |2
+      #!/bin/sh
+      /bin/openresty $@
+      /bin/openresty -v
+    owner: root
+    group: root
+    mode: 0755

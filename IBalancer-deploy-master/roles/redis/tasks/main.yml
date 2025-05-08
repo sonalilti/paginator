@@ -1,0 +1,32 @@
+- name: sanity check mandatory variables
+  import_tasks: assert_variables.yml
+
+- name: manage packages
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}_{{redis_vars.source}}.yml"
+        - "generic_{{ ansible_os_family|lower }}_{{redis_vars.source}}.yml"
+        - "generic_{{ ansible_os_family|lower }}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+  when: redis_vars.server
+
+- name: set up config file
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "config_{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}_{{redis_vars.source}}.yml"
+      skip: True
+  loop_control:
+    loop_var: task_file
+  when: redis_vars.server
+
+- name: start service
+  service:
+    name: redis
+    enabled: True
+    state: started
+  when: redis_vars.server
+

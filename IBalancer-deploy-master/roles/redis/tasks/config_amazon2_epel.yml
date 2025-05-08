@@ -1,0 +1,7 @@
+- name: set up redis_vars.conf
+  template:
+    src: redis_vars.conf.j2
+    dest: /etc/redis.conf
+    owner: redis
+    group: root
+    mode: 0640

@@ -1,0 +1,40 @@
+user {{ nginx_vars.user }} {{ nginx_vars.group|d(nginx_vars.user) }};
+worker_processes {{ nginx_vars.worker_processes }};
+error_log {{ nginx_vars.error_log }};
+pid {{ nginx_vars.pid }};
+
+include {{ nginx_vars.modules|d('/usr/share/nginx/modules') }}/*.conf;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    server_name_in_redirect {{ nginx_vars.server_name_in_redirect }};
+
+    access_log   {{ nginx_vars.access_log }}  main;
+
+    sendfile            {{ nginx_vars.sendfile }};
+    tcp_nopush          {{ nginx_vars.tcp_nopush }};
+    tcp_nodelay         {{ nginx_vars.tcp_nodelay }};
+    keepalive_timeout   {{ nginx_vars.keepalive_timeout }};
+    types_hash_max_size {{ nginx_vars.types_hash_max_size }};
+    server_names_hash_bucket_size {{ nginx_vars.server_names_hash_bucket_size }};
+    large_client_header_buffers {{ nginx_vars.large_ch_buf.num }} {{ nginx_vars.large_ch_buf.size }};
+    client_max_body_size {{ nginx_vars.client_max_body_size }};
+
+    include             mime.types;
+    default_type        application/octet-stream;
+
+    gzip                {{ nginx_vars.gzip.auto }};
+    gzip_static         {{ nginx_vars.gzip.static }};
+    gzip_types          {{ nginx_vars.gzip.types|join(' ') }};
+    gzip_proxied        {{ nginx_vars.gzip.proxied|join(' ') }};
+    gzip_min_length     {{ nginx_vars.gzip.min_length }};
+
+    include conf.d/*.conf;
+    }

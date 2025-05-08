@@ -1,0 +1,32 @@
+---
+sshd_arrangement:
+  honeypot: False
+  address_family: "inet"
+  listen_address: "0.0.0.0"
+  host_key_auth: "yes"
+  hostcertificate: "none"
+  trustedusercakeys: "none"
+  hostcertificate_content: ""
+  trustedusercakeys_content: ""
+  authorizedprincipalsfile: "none"
+  authorizedprincipalscommand: "none"
+  authorizedprincipalscommanduser: "nobody"
+  authorizedprincipalsfile_content: ""
+  challengeresponseauthentication: "no"
+  permitrootlogin: "without-password"
+  pubkeyauthentication: "yes"
+  permitemptypasswords: "no"
+  passwordauthentication: "no"
+  allowagentforwarding: "yes"
+  allowtcpforwarding: "yes"
+  x11forwarding: "no"
+  syslogfacility: "AUTHPRIV"
+  loglevel: "INFO"
+  logingracetime: "2m"
+  maxauthtries: "6"
+  strictmodes: "yes"
+  maxsessions: "10"
+  append_lines: |-
+    Subsystem sftp  /usr/libexec/openssh/sftp-server
+  ports:
+    - 22

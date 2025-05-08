@@ -1,0 +1,52 @@
+bind {{ redis_vars.bind }}
+protected-mode {{ redis_vars.protectedmode }}
+port {{ redis_vars.port }}
+tcp-backlog {{ redis_vars.tcpbacklog }}
+timeout {{ redis_vars.timeout }}
+tcp-keepalive {{ redis_vars.tcpkeepalive }}
+daemonize {{ redis_vars.daemonize }}
+supervised {{ redis_vars.supervised }}
+pidfile {{ redis_vars.pidfile }}
+loglevel {{ redis_vars.loglevel }}
+logfile {{ redis_vars.logfile }}
+databases {{ redis_vars.databases }}
+save 900 1
+save 300 10
+save 60 10000
+stop-writes-on-bgsave-error {{ redis_vars.stopwritesonbgsaveerror }}
+rdbcompression {{ redis_vars.rdbcompression }}
+rdbchecksum {{ redis_vars.rdbchecksum }}
+dbfilename {{ redis_vars.dbfilename }}
+dir {{ redis_vars.dir }}
+slave-serve-stale-data {{ redis_vars.slaveservestaledata }}
+slave-read-only {{ redis_vars.slavereadonly }}
+repl-diskless-sync {{ redis_vars.repldisklesssync }}
+repl-diskless-sync-delay {{ redis_vars.repldisklesssyncdelay }}
+repl-disable-tcp-nodelay {{ redis_vars.repldisabletcpnodelay }}
+slave-priority {{ redis_vars.slavepriority }}
+appendonly {{ redis_vars.appendonly }}
+appendfilename {{ redis_vars.appendfilename }}
+appendfsync {{ redis_vars.appendfsync }}
+no-appendfsync-on-rewrite {{ redis_vars.noappendfsynconrewrite }}
+auto-aof-rewrite-percentage {{ redis_vars.autoaofrewritepercentage }}
+auto-aof-rewrite-min-size {{ redis_vars.autoaofrewriteminsize }}
+aof-load-truncated {{ redis_vars.aofloadtruncated }}
+lua-time-limit {{ redis_vars.luatimelimit }}
+slowlog-log-slower-than {{ redis_vars.slowloglogslowerthan }}
+slowlog-max-len {{ redis_vars.slowlogmaxlen }}
+latency-monitor-threshold {{ redis_vars.latencymonitorthreshold }}
+notify-keyspace-events {{ redis_vars.notifykeyspaceevents }}
+hash-max-ziplist-entries {{ redis_vars.hashmaxziplistentries }}
+hash-max-ziplist-value {{ redis_vars.hashmaxziplistvalue }}
+list-max-ziplist-size {{ redis_vars.listmaxziplistsize }}
+list-compress-depth {{ redis_vars.listcompressdepth }}
+set-max-intset-entries {{ redis_vars.setmaxintsetentries }}
+zset-max-ziplist-entries {{ redis_vars.zsetmaxziplistentries }}
+zset-max-ziplist-value {{ redis_vars.zsetmaxziplistvalue }}
+hll-sparse-max-bytes {{ redis_vars.hllsparsemaxbytes }}
+activerehashing {{ redis_vars.activerehashing }}
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit slave 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60
+hz {{ redis_vars.hz }}
+aof-rewrite-incremental-fsync {{ redis_vars.aofrewriteincrementalfsync }}

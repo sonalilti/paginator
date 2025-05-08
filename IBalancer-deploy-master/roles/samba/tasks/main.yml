@@ -1,0 +1,21 @@
+- name: sanity check mandatory variables
+  import_tasks: assert_variables.yml
+
+- name: procure Samba packages
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}.yml"
+        - "generic_{{ ansible_os_family|lower }}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+  when:
+    - samba_vars.conf.gist is defined
+    - samba_vars.conf.gist
+
+- name: set up Samba server
+  import_tasks: setup.yml
+  when:
+    - samba_vars.conf.gist is defined
+    - samba_vars.conf.gist

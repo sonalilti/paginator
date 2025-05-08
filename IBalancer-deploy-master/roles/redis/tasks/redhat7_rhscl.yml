@@ -1,0 +1,36 @@
+---
+- name: Make sure Red Hat Software Collections are available
+  rhsm_repository:
+    name:
+      - rhel-server-rhscl-7-rpms
+      - rhel-7-server-optional-rpms
+  when: skiprhsm is not defined or not skiprhsm
+
+- name: Procure Redis package
+  yum:
+    pkg: 
+      - "rh-redis{{ redis_vars.version|string|replace('.', '') }}"
+    state: present
+
+- name: Expose CLI utilities for interactive shell sessions
+  lineinfile:
+    dest: "{{ item.home }}/.bashrc"
+    line: "source scl_source enable rh-redis{{ redis_vars.version|string|replace('.', '') }}"
+    owner: "{{ item.name }}"
+    mode: 0640
+    create: True
+  loop:
+    - name: root
+      home: /root
+    - name: "{{ ansible_user}}"
+      home: "/home/{{ ansible_user}}"
+  when: redis_vars.rhscl_exposed
+
+- name: Advertise CLI utilities via MOTD
+  lineinfile:
+    dest: /etc/motd
+    line: "rh-redis{{ redis_vars.version|string|replace('.', '') }} is available: issue command `source /opt/rh/rh-redis{{ redis_vars.version|string|replace('.', '') }}/enable` to access CLI"
+    state: "{% if redis_vars.rhscl_exposed %}absent{% else %}present{% endif %}"
+
+- set_fact:
+    redis_service: "rh-redis{{ redis_vars.version|string|replace('.', '') }}-redis"

@@ -1,0 +1,89 @@
+- name: Install ImageMagick and potrace
+  yum:                                                                                                                                                                        
+    name:
+      - ImageMagick
+      - potrace
+    state: present
+
+- name: set up working directory for IMS
+  file:
+    path: "{{ ims_vars.workdir.path }}"
+    state: directory
+    owner: "{{ ims_vars.user }}"
+    group: "{{ ims_vars.group }}"
+    mode: "{% if ims_vars.user != ims_vars.group %}0775{% else %}0755{% endif %}"
+
+- name: fetch IMS bundle from Internet
+  get_url:
+    url: >
+      {{ ims_vars.binrepo.uri }}/{{ ims_vars.binrepo.binary }}
+    url_username: "{{ ims_vars.binrepo.username }}"
+    url_password: "{{ ims_vars.binrepo.password }}"
+    dest: "{{ ims_vars.workdir.path }}/ims"
+    owner: root
+    group: root
+    mode: 0755
+    validate_certs: False
+  register: ims_bin_dl
+  when: ims_vars.bundle is not defined
+
+- name: upload IMS bundle
+  copy:
+    src: "{{ ims_vars.bundle }}"
+    dest: "{{ ims_vars.workdir.path }}/ims"
+    owner: root
+    group: root
+    mode: 0755
+  register: ims_bin_ul
+  when: ims_vars.bundle is defined
+
+- name: install policies
+  template:
+    src: policy.xml.j2
+    dest: "{{ ims_vars.imagemagick.conf_dir }}/policy.xml"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: set up IMS systemd unit file
+  vars:
+    args: >
+      {% if ims_vars.backend is defined %}--node-backend={{ ims_vars.backend }}{% endif %}
+      {% if ims_vars.debug is defined and ims_vars.debug%}--debug{% endif %}
+  copy:
+    content: |+
+      [Unit]
+      Description=Nucleus Image Manipulation Service
+      After=network.target
+
+      [Service]
+      User={{ ims_vars.user }}
+      Group={{ ims_vars.group }}
+      {% if ims_vars.user != ims_vars.group %}
+      UMask=0002
+      {% endif %}
+      {% for envvar in ims_vars.env %}
+      Environment="{{ envvar.name}}={{ envvar.value }}"
+      {% endfor %}
+      ExecStart={{ ims_vars.workdir.path }}/ims {{ args }}
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/ims.service
+  register: servicefile
+
+- name: notify Systemd on service file change
+  shell: /bin/systemctl daemon-reload
+  when: servicefile.changed
+
+- name: set up service
+  service:
+    name: ims
+    enabled: "{{ ims_vars.enabled }}"
+    state: "{% if ims_vars.started|d(ims_vars.enabled) %}restarted{% else %}stopped{% endif %}"
+
+- name: include extra tasks
+  include_tasks:
+    file: "{{ item }}.yml"
+  loop: "{{ ims_vars.extra_tasks }}"

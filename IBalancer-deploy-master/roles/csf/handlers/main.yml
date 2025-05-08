@@ -1,0 +1,8 @@
+---
+- name: Reload ConfigServer Security & Firewall
+  shell: "sleep 1 ; csf -r"
+  async: 60
+  poll: 0
+  changed_when: False
+  listen: Apply config
+  ignore_errors: "{{ ansible_check_mode }}"

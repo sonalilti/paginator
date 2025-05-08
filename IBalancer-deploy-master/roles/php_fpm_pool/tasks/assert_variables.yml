@@ -1,0 +1,7 @@
+---
+- name: "pool_vars.name must be defined and must not be equal to the default pool name 'www'"
+  assert:
+    that: pool_vars.name is defined and pool_vars.name != "www"
+    msg: |-
+      'pool_vars.name' must be defined and must not be equal to the default pool name 'www'
+      This variable does not have default value.

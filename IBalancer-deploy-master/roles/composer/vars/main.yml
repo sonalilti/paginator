@@ -1,0 +1,2 @@
+---
+composer_vars: "{{ composer_arrangement|combine(composer_override|d({})|combine(composer|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

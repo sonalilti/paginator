@@ -1,0 +1,96 @@
+---
+- name: Make sure Red Hat Software Collections are available
+  rhsm_repository:
+    name:
+      - rhel-server-rhscl-7-rpms
+      - rhel-7-server-optional-rpms
+  when: skiprhsm is not defined or not skiprhsm
+
+- name: "Procure php{{ php_vars.version }} binaries"
+  yum:
+    pkg: "rh-php{{ php_vars.version }}"
+    state: "{{ php_vars.state }}"
+
+- name: "Procure php{{ php_vars.version }} FPM daemon"
+  yum:
+    pkg: "rh-php{{ php_vars.version }}-php-fpm"
+    state: "{{ php_vars.state }}"
+  when: php_vars.with_fpm
+
+- name: "Procure php{{ php_vars.version }} Apache module"
+  yum:
+    pkg: "rh-php{{ php_vars.version }}-php"
+    state: "{{ php_vars.state }}"
+  when: php_vars.with_apache
+
+- name: "Procure php{{ php_vars.version }} devel packages for use with pecl"
+  yum:
+    pkg:
+      - "rh-php{{ php_vars.version }}-php-devel"
+      - gcc
+      - cpp
+    state: present
+
+- name: "Procure php{{ php_vars.version }} debug packages"
+  pear:
+    executable: "/opt/rh/rh-php{{ php_vars.version }}/root/usr/bin/pear"
+    name: pecl/xdebug
+    state: present
+  when: php_vars.with_devel
+
+- name: "Activate php{{ php_vars.version }} debug packages"
+  copy:
+    content: >
+      zend_extension=/opt/rh/rh-php{{ php_vars.version }}/root/usr/lib64/php/modules/xdebug.so
+    dest: "/etc/opt/rh/rh-php{{ php_vars.version }}/php_vars.d/40-xdebug.ini"
+    owner: root
+    group: root
+    mode: 0644
+  when: php_vars.with_devel
+
+- name: "Compose list of core php{{ php_vars.version }} modules"
+  set_fact:
+    corem: >
+      {% for item in php_vars.core_modules %}
+      rh-php{{ php_vars.version }}-php-{{ item }}
+      {% endfor %}
+
+- name: "Procure core modules"
+  yum:
+    pkg: "{{ corem.split() }}"
+    state: "{{ php_vars.state }}"
+
+- name: "Compose list of extra php{{ php_vars.version }} modules"
+  set_fact:
+    xtram: >
+      {% for item in php_vars.extra_modules %}
+      rh-php{{ php_vars.version }}-php-{{ item }}
+      {% endfor %}
+
+- name: Procure extra modules (yum)
+  yum:
+    pkg: "{{ xtram.split() }}"
+    state: "{{ php_vars.state }}"
+
+- name: Procure extra modules (pecl)
+  pear:
+    executable: "/opt/rh/rh-php{{ php_vars.version }}/root/usr/bin/pear"
+    name: pecl/msgpack
+    state: present
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Enable extra modules
+  copy:
+    content: extension=msgpack.so
+    dest: "/etc/opt/rh/rh-php{{ php_vars.version }}/php_vars.d/50-msgpack.ini"
+
+- name: Set optional UMask
+  copy:
+    content: |
+      [Service]
+      UMask={{ php_vars.umask }}
+    dest: "/etc/systemd/system/rh-php{{ php_vars.version }}-php-fpm.service.d/override.conf"
+  when: php_vars.umask is defined and php_vars.umask
+
+- set_fact:
+    php_bindir: "/opt/rh/rh-php{{ php_vars.version }}/root/usr/bin"

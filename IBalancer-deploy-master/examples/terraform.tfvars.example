@@ -1,0 +1,40 @@
+##
+## The bare minimum. Variables that must be set for Terraform script to work.
+##
+
+# ssh public key in OpenVPN format
+# required to be able to log into new instances
+# generate your own keypair and update the following line:
+
+ssh_pub    = "issh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfLAJbNeAnQnDc4qNYiWkmS4PCKr3PzvYO84vlCUlwMQVH9Ksx2biX6efalSOafKirm9EPCwf2MDxGiTkTD2X8Zh0TYWojk9foLGKJZZRS7hjI6Wiri+LUaSJXGLvPnW37Hl2QY+iJFZNW4lsElnttL6T2eUUKF21ZUqPQ3JyGArwfpjOOFa7vgNxyVsKC/FW7PsGSX6tyfXvrKldcpTdcIQprZlK9PR+w3XP+MZhOLSXGMh4MNBH2MdS9ThbR0UIG3/zhDRehO4ENwSik9Ws3gddkvjyOpEG3WAiyWxdEioniM/8tJ2LxtUcvLWcaRtry7bF+pRAVn+NuV+9OM3gtPSSYt3A456aszFzOqVRO4Cvn7WxAKnu9qjLuAMz9pRymTJ0w1nYBpyxLzx+2TdmInDZ6dOTcU9rDkxXforjYw7Srcn//TfzHdtoL0ZMV3PhF8rwBCTNwm7OAhIhHJ6kGtsZeIcf6w1uPl4dZfquC91BkVb6kRSWxSG0Qbrk7IJ0="
+
+# VPC name, mainly for reasons of VPC identificateion on AWS console
+# may represent application domain name but can have any form assepted by AWS
+
+vpc_name   = "dev.mycompany.tld"
+
+# Route53 DNS zone for internal use within VPC
+# all instances will be registered to this DNS zone and discoverable within VPC
+
+local_zone = "dev.home.arpa"
+
+# CIDR block to use for VPC subnets
+# this VPC is isolated by default so any CIDR will work but you may wish to set up network connectivity
+# with other VPCs and/or networks so it is convenient to choose network range that does not conflict with existing infrastructure
+
+vpc_cidr   = "172.20.0.0/20"
+
+##
+## Fne tuning
+##
+
+# See the build.tf file for available variables and their descriptions, override any defaults below.
+# As an example, you may wish to build two IDS Agent instances, in this case set agent_count appropriately:
+# agent_count = 2
+
+# Or you may wish to use RDS for database, in this case set rds_allocated_storage to a non-zero value:
+# rds_allocated_storage = 20
+# and also set up strong and unique authentication credentials:
+# rds_username = "your value"
+# rds_password = "your value"
+

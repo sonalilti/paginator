@@ -1,0 +1,18 @@
+- name: sanity check mandatory variables
+  import_tasks: assert_variables.yml
+
+- name: manage SELinux ruleset
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}.yml"
+        - "generic_{{ ansible_os_family|lower }}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+  when:
+    - not noselinux|d(False)
+    - vhost_vars.seboolean
+
+- name: set up virtualhost
+  import_tasks: virtualhost.yml

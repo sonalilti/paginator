@@ -1,0 +1,31 @@
+---
+# There is no dedicated upstream repository for Amazon Linux 2
+# There is no independent mariadb repo on amazon-linux-extras too
+# The only available option is to use MariaDB from Centos 7 repo
+- name: Add community MariaDB YUM repository
+  yum_repository:
+    name: mariadb
+    description: MariaDB YUM repository
+    baseurl: >
+      http://yum.mariadb.org/{{ mariadb_vars.version }}/centos7-amd64
+  changed_when: False # Bug (ansible?): it is always 'changed'
+  when: skipreposetup is not defined or not skipreposetup
+
+- name: Register community MariaDB YUM repository gpg key
+  rpm_key:
+    state: present
+    key: https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+  when: skipreposetup is not defined or not skipreposetup
+                          
+- name: Install MariaDB client packages
+  yum:
+    name:
+      - MariaDB-client
+      - MySQL-python
+  when: mariadb_vars.client
+
+- name: Install MariaDB server packages
+  yum:
+    name:
+      - MariaDB-server
+  when: mariadb_vars.server

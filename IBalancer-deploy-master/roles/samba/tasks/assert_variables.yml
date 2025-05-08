@@ -1,0 +1,10 @@
+---
+- name: Is `samba_vars.conf.gist` defined?
+  assert:
+    that: samba_vars.conf.gist is defined
+    msg: |
+      Please define 'samba_vars.conf.gist'. There is no default value for this variable.
+      A free-form multiline variable, it has to be a correct smb.conf representation.
+      Playbook will proceed assuming that you are planning to use external storage and
+      mountpoints are set up.
+  ignore_errors: True

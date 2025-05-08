@@ -1,0 +1,53 @@
+[{{ pool_vars.name }}]
+user = {{ pool_vars.user }}
+group = {{ pool_vars.group }}
+listen = {{ pool_vars.listen }}
+{% if pool_vars.listen_allowed_clients != "" %}
+listen.allowed_clients = {{ pool_vars.listen_allowed_clients }}
+{% endif %}
+{% if pool_vars.listen_sock_owner != "" %}
+listen.owner = {{ pool_vars.listen_sock_owner }}
+{% endif %}
+{% if pool_vars.listen_sock_group != "" %}
+listen.group = {{ pool_vars.listen_sock_group }}
+{% endif %}
+{% if pool_vars.listen_sock_mode != "" %}
+listen.mode = {{ pool_vars.listen_sock_mode }}
+{% endif %}
+{% if pool_vars.listen_sock_acl_users != "" %}
+listen.acl_users = {{ pool_vars.listen_sock_acl_users }}
+{% endif %}
+{% if pool_vars.listen_sock_acl_groups != "" %}
+listen.acl_groups = {{ pool_vars.listen_sock_acl_groups }}
+{% endif %}
+pm = {{ pool_vars.pm }}
+pm.max_children = {{ pool_vars.pm_max_children }}
+pm.start_servers = {{ pool_vars.pm_start_servers }}
+pm.min_spare_servers = {{ pool_vars.pm_min_spare_servers }}
+pm.max_spare_servers = {{ pool_vars.pm_max_spare_servers }}
+pm.process_idle_timeout = {{ pool_vars.pm_idle_timeout }}
+pm.max_requests = {{ pool_vars.pm_max_requests }}
+{% if pool_vars.pm_status_path != "" %}
+pm.status_path = {{ pool_vars.pm_status_path }}
+{% endif %}
+{% if pool_vars.ping_path != "" %}
+ping.path = {{ pool_vars.ping_path }}
+ping.response = {{ pool_vars.ping_response }}
+{% endif %}
+slowlog = /var/opt/rh/rh-php{{ pool_vars.php_version }}/log/php-fpm/{{ pool_vars.name }}-slow.log
+env[HOSTNAME] = {{ pool_vars.env_hostname }}
+env[PATH] = {{ pool_vars.env_path }}
+env[TMP] = {{ pool_vars.env_tmp }}
+env[TMPDIR] = {{ pool_vars.env_tmpdir }}
+env[TEMP] = {{ pool_vars.env_temp }}
+php_admin_value[error_log] = /var/opt/rh/rh-php{{ pool_vars.php_version }}/log/php-fpm/{{ pool_vars.name }}-error.log
+php_admin_flag[log_errors] = {{ pool_vars.log_errors }}
+php_value[session.save_handler] = {{ pool_vars.session_save_handler }}
+php_value[session.save_path]    = /var/opt/rh/rh-php{{ pool_vars.php_version }}/lib/php/session
+php_value[soap.wsdl_cache_dir]  = /var/opt/rh/rh-php{{ pool_vars.php_version }}/lib/php/wsdlcache
+{% for item in pool_vars.admin_extra_flags %}
+php_admin_flag[{{ item.flag }}] = {{ item.substitute }}
+{% endfor %}
+{% for item in pool_vars.admin_extra_values %}
+php_admin_value[{{ item.value }}] = {{ item.substitute }}
+{% endfor %}

@@ -1,0 +1,21 @@
+---
+- name: Make sure yum-utils are present
+  yum:
+    name: yum-utils
+
+- name: Procure upstream NGINX repository
+  yum_repository:
+    name: nginx_upstream
+    gpgkey: http://nginx_vars.org/keys/nginx_signing.key
+    gpgcheck: True
+    repo_gpgcheck: True
+    baseurl: "http://nginx_vars.org/packages/{{ ansible_distribution|lower }}/{{ ansible_distribution_major_version }}/$basearch/"
+    description: Upstream NGINX repository
+    enabled: True
+    enablegroups: True
+    state: present
+
+- name: Procure packages
+  yum:
+    name:
+      - nginx

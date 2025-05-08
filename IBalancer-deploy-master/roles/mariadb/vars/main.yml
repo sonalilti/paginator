@@ -1,0 +1,2 @@
+---
+mariadb_vars: "{{ mariadb_arrangement|combine(mariadb_override|d({})|combine(mariadb|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

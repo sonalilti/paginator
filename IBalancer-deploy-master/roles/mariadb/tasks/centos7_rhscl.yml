@@ -1,0 +1,45 @@
+---
+- name: Make sure Red Hat Software Collections are available
+  yum:
+    pkg: centos-release-scl
+  when: skipreposetup is not defined or not skipreposetup
+
+- name: Procure MariaDB packages
+  yum:
+    pkg: 
+      - "rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }}"
+      - "rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }}-mariadb-server"
+
+- name: Procure MariaDB packages
+  yum:
+    pkg: 
+      - "rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }}-syspaths"
+  when: mariadb_vars.client
+
+- name: Expose CLI utilities for interactive shell sessions
+  lineinfile:
+    dest: "{{ item.home }}/.bashrc"
+    line: "source scl_source enable rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }}"
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: 0640
+    create: True
+  loop:
+    - name: root
+      home: /root
+    - name: "{{ ansible_user}}"
+      home: "/home/{{ ansible_user}}"
+  when: mariadb_vars.rhscl_exposed
+
+- name: Advertise CLI utilities via MOTD
+  lineinfile:
+    dest: /etc/motd
+    line: "rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }} is available: issue command `source /opt/rh/rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }}/enable` to access CLI"
+    state: "{% if mariadb_vars.rhscl_exposed %}absent{% else %}present{% endif %}"
+  when: not mariadb_vars.client
+
+- set_fact:
+    mariadb_service: "rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }}-mariadb"
+
+- set_fact:
+    mariadb_confdir: "/etc/opt/rh/rh-mariadb{{ mariadb_vars.version|string|replace('.', '') }}/my.cnf.d"

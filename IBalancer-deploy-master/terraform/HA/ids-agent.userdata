@@ -1,0 +1,7 @@
+<powershell>
+if ((Get-NetConnectionProfile).NetworkCategory -ne "Private") { Set-NetConnectionProfile -InterfaceAlias Ethernet -NetworkCategory Private }
+
+if ((Get-CimInstance -ClassName Win32_ComputerSystem).Name -ne "agent${number}") {
+  Rename-Computer -NewName "agent${number}" -Force -Restart
+}
+</powershell>

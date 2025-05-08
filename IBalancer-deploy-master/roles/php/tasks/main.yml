@@ -1,0 +1,27 @@
+- name: "manage PHP {{ php_vars.version }} packages"
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}.yml"
+        - "generic_{{ ansible_os_family|lower }}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+
+- name: maintain configuration
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}-conf.yml"
+        - "generic_{{ ansible_os_family|lower }}-conf.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+
+- set_fact:
+    fpm_service: "rh-php{{ php_vars.version }}-php-fpm"
+  when:  ansible_distribution|lower in [ 'centos', 'redhat', 'oraclelinux' ] and ansible_distribution_major_version == 7
+
+- set_fact:
+    php_executable: "/opt/rh/rh-php{{ php_vars.version }}/root/usr/bin/php"
+  when:  ansible_distribution|lower in [ 'centos', 'redhat', 'oraclelinux' ] and ansible_distribution_major_version == 7

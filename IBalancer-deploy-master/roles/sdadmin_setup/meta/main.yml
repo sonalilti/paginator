@@ -1,0 +1,14 @@
+galaxy_info:
+  author: Silicon Publishing OPS Team <ops@siliconpublishing.com>
+  description: Setup Silicon Publishing Designer Admin host
+  company: Silicon Publishing
+
+  min_ansible_version: 2.9
+
+dependencies:
+  -  php
+  -  php_fpm_pool
+  -  mariadb
+  -  samba
+  -  redis
+  -  composer

@@ -1,0 +1,2 @@
+---
+csf_vars: "{{ csf_arrangement|combine(csf_override|d({})|combine(csf|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

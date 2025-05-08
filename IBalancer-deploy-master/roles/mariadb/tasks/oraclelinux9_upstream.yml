@@ -1,0 +1,47 @@
+---
+- name: Add community MariaDB YUM repository
+  yum_repository:
+    name: mariadb
+    description: MariaDB YUM repository
+    baseurl: >
+      http://yum.mariadb.org/{{ mariadb_vars.version }}/rhel{{ ansible_distribution_major_version }}-amd64
+  changed_when: False # Bug (ansible?): it is always 'changed'
+  when: skipreposetup is not defined or not skipreposetup
+
+- name: procure EPEL repository
+  yum:
+    name: oracle-epel-release-el9
+    state: present
+  when: skipreposetup is not defined or not skipreposetup
+  ignore_errors: True
+
+- name: Register community MariaDB YUM repository gpg key
+  rpm_key:
+    state: present
+    key: https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+    validate_certs: False # Temporary workaround
+  when: skipreposetup is not defined or not skipreposetup
+                          
+- name: Install MariaDB client packages
+  yum:
+    name:
+      - MariaDB-client
+      - python3-mysqlclient
+  when: mariadb_vars.client
+
+- block:
+  - name: Install MariaDB server packages
+    yum:
+      name:
+        - MariaDB-server
+  - name: Apply workarounds for MariaDB issues MDEV-24941 and MDEV-30520
+    copy:
+      dest: /etc/systemd/system/mariadb.service.d/override.conf
+      content: |
+        [Service]
+        ExecStartPre=/usr/bin/chcon -t mysqld_exec_t /usr/sbin/mariadbd
+        ExecStartPost=/usr/sbin/restorecon /var/lib/mysql/mysql.sock
+  - name: Activate workarounds
+    command: /usr/bin/systemctl daemon-reload
+  when: mariadb_vars.server
+

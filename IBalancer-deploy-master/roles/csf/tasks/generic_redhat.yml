@@ -1,0 +1,43 @@
+---
+- name: Install prerequisite software packages
+  yum:
+    name: "{{ el_packages }}"
+    state: present
+
+- name: Download distribution from `configserver.com`
+  get_url:
+    url: https://download.configserver.com/csf.tgz
+    dest: /tmp/csf.tgz
+    mode: 0664
+    validate_certs: False
+  when: csf.csf_bundle is not defined
+
+- name: Upload local copy of distribution bundle
+  copy:
+    src: "{{ csf.csf_bundle }}"
+    dest: /tmp/csf.tgz
+  when: csf.csf_bundle is defined
+
+- name: Extract distribution archive
+  unarchive:
+    src: /tmp/csf.tgz
+    dest: /tmp
+    copy: no
+
+- name: Disable firewalld
+  service:
+    name: firewalld
+    state: stopped
+    enabled: no
+  changed_when: False
+  failed_when: False
+
+- name: Run installer
+  command: sh install.sh
+  args:
+    chdir: /tmp/csf
+
+- name: Remove temp directory
+  file:
+    path: /tmp/csf
+    state: absent

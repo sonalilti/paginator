@@ -1,0 +1,32 @@
+---
+- name: "Advertise availability of this PHP version via /etc/motd"
+  lineinfile:
+    path: "/etc/motd"
+    line: "php{{ php_vars.version }} is available: issue command `source /opt/rh/rh-php{{ php_vars.version }}/enable` to access CLI"
+  when: 
+    - php_vars.advertise
+    - php_vars.state != "absent"
+    - php_vars.state != "removed"
+
+- name: "Unadvertise availability of this PHP version via /etc/motd in case of removal"
+  lineinfile:
+    path: "/etc/motd"
+    line: "php{{ php_vars.version }} is available: issue command `source /opt/rh/rh-php{{ php_vars.version }}/enable` to access CLI"
+    state: absent
+  when: php_vars.state == "absent" or php_vars.state == "removed"
+
+- name: "Keep default pool /etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/www.conf active"
+  command: "mv www.conf.disabled www.conf"
+  args:
+    chdir: "/etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/"
+    creates: "/etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/www.conf"
+    removes: "/etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/www.conf.disabled"
+  when: php_vars.fpm_keep_default_pool
+
+- name: "Keep default pool /etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/www.conf disabled"
+  command: "mv www.conf www.conf.disabled"
+  args:
+    chdir: "/etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/"
+    creates: "/etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/www.conf.disabled"
+    removes: "/etc/opt/rh/rh-php{{ php_vars.version }}/php-fpm.d/www.conf"
+  when: not php_vars.fpm_keep_default_pool

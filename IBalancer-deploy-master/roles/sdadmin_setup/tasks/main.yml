@@ -1,0 +1,12 @@
+- name: sanity check mandatory variables
+  import_tasks: assert_variables.yml
+
+- name: "Include {% if app.use_lua|d(False) %}openresty{% else %}nginx{% endif %} role"
+  include_role:
+    name: "{% if app.use_lua|d(False) %}openresty{% else %}nginx{% endif %}"
+
+- name: perform setup 
+  include_tasks: software.yml
+
+- name: set up log collector
+  include_tasks: log_collector.yml

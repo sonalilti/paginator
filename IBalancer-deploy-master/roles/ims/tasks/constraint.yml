@@ -1,0 +1,19 @@
+- name: Decide how much RAM to allow IM to use
+  ansible.builtin.set_fact:
+    im_ram: "{{ ansible_facts.memtotal_mb // 8 }}"
+
+- name: Assemble IMS policy settings
+  ansible.builtin.set_fact:
+    im_resources:
+      policy:
+        resource:
+          memory: "{% if im_ram|int < 1024 %}{{ im_ram }}{% else %}1024{% endif %}MiB"
+          map: "{% if im_ram|int < 1024 %}{{ im_ram }}{% else %}1024{% endif %}MiB"
+          area: 16KP
+          disk: 4GiB
+          file: 768
+
+- name: Apply IMS policy settings
+  ansible.builtin.set_fact:
+          ims: "{{ ims_vars | combine(im_resources, list_merge='append_rp', recursive=true) }}"
+

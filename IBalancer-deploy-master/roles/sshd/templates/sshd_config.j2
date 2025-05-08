@@ -1,0 +1,58 @@
+# Managed  by  Ansible!
+# You have been warned.
+
+Protocol 2
+
+{% for port in sshd_vars.ports %}
+Port {{ port }}
+{% endfor %}
+
+AddressFamily {{ sshd_vars.address_family }}
+ListenAddress {{ sshd_vars.listen_address }}
+
+{% if sshd_vars.host_key_auth == "yes" %}
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+{% endif %}
+
+{% if sshd_vars.hostcertificate != "none" %}
+HostCertificate {{ sshd_vars.hostcertificate }}
+{% endif %}
+TrustedUserCAKeys {{ sshd_vars.trustedusercakeys }}
+AuthorizedPrincipalsFile {{ sshd_vars.authorizedprincipalsfile }}
+{% if sshd_vars.authorizedprincipalscommand != "none" %}
+AuthorizedKeysCommand {{ sshd_vars.authorizedprincipalscommand }}
+{% endif %}
+{% if sshd_vars.authorizedprincipalscommanduser != "none" %}
+AuthorizedKeysCommandUser {{ sshd_vars.authorizedprincipalscommanduser }}
+{% endif %}
+
+SyslogFacility {{ sshd_vars.syslogfacility }}
+LogLevel {{ sshd_vars.loglevel }}
+
+LoginGraceTime {{ sshd_vars.logingracetime }}
+StrictModes {{ sshd_vars.strictmodes }}
+MaxAuthTries {{ sshd_vars.maxauthtries }}
+MaxSessions {{ sshd_vars.maxsessions }}
+
+PermitRootLogin {{ sshd_vars.permitrootlogin }}
+PubkeyAuthentication {{ sshd_vars.pubkeyauthentication }}
+ChallengeResponseAuthentication {{ sshd_vars.challengeresponseauthentication }}
+PasswordAuthentication {{ sshd_vars.passwordauthentication }}
+PermitEmptyPasswords {{ sshd_vars.permitemptypasswords }}
+
+# WARNING: 'UsePAM no' is not supported in RHEL!
+UsePAM yes
+
+AllowAgentForwarding {{ sshd_vars.allowagentforwarding }}
+AllowTcpForwarding {{ sshd_vars.allowtcpforwarding }}
+X11Forwarding {{ sshd_vars.x11forwarding }}
+
+# Accept locale-related environment variables
+AcceptEnv LANG LC_CTYPE LC_NUMERIC LC_TIME LC_COLLATE LC_MONETARY LC_MESSAGES
+AcceptEnv LC_PAPER LC_NAME LC_ADDRESS LC_TELEPHONE LC_MEASUREMENT
+AcceptEnv LC_IDENTIFICATION LC_ALL LANGUAGE
+AcceptEnv XMODIFIERS
+
+{{ sshd_vars.append_lines }}

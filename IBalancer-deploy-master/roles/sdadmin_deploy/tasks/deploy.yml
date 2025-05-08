@@ -1,0 +1,394 @@
+- name: Procure git checkout key
+  copy:
+    content: "{{ git.key }}"
+    dest: "{{ ansible_env.HOME }}/.git.pem"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: 0600
+  when: git.key is defined
+
+- name: Thorough cache clean procedure
+  shell: rm -vf bootstrap/cache/*.php
+  args:
+    chdir: "{{ app.path.webroot }}"
+  when: force_thorough_cache_flush|d(True)
+  changed_when: False
+  failed_when: False
+
+- name: "Flush caches with `artisan` as {{ deploy_as_user|default('nginx') }}"
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan {{ item }}
+  args:
+    chdir: "{{ app.path.webroot }}"
+  failed_when: False
+  changed_when: False
+  loop:
+    - config:clear
+    - route:clear
+    - view:clear
+
+- name: "Fetch tag/branch {{ git.tag }} over SSH"
+  git:
+    repo: "{{ git.remote }}"
+    dest: "{{ app.path.webroot }}"
+    key_file: "{{ ansible_env.HOME }}/.git.pem"
+    ssh_opts: "-o StrictHostKeyChecking=no"
+    version: "{{ git.tag }}"
+    force: 1
+  when: git.key is defined
+  register: gitssh
+
+- name: "Fetch tag/branch {{ git.tag }} via https"
+  git:
+    repo: "{{ git.remote }}"
+    dest: "{{ app.path.webroot }}"
+    version: "{{ git.tag }}"
+    force: 1
+  when: git.key is not defined
+  register: githttps
+
+- name: Get full release version info
+  command: /bin/git describe --long --tags --always
+  args:
+    chdir: "{{ app.path.webroot }}"
+  register: git_release_info
+  changed_when: False
+
+- name: Get release version
+  command: /bin/git describe --tags
+  args:
+    chdir: "{{ app.path.webroot }}"
+  register: git_release_ver
+  changed_when: False
+
+- name: Procure `config/version.php`
+  vars:
+    newline: "\n"
+  copy:
+    dest: "{{ app.path.webroot }}/config/version.php"
+    content: "<?php{{ newline }}  return \"{{ git_release_info.stdout }}\";{{ newline }}?>"
+    owner: nginx
+    group: "{{ app.run_as|d('nginx') }}"
+    mode: 0640
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Procure `.env` file
+  vars:
+    git_tag: "{{ git_release_info.stdout.split('-')[0] }}"
+    app_proto: >-
+      {% if app.nossl is defined and app.nossl %}http{% else %}https{% endif %}
+  copy:
+    content: |+
+      APP_NAME={{ app.env.name | default('Nucleus')}}
+      APP_ENV={{ app.env.id }}
+      APP_KEY={{ app.env.key }}
+      APP_DEBUG={{ app.env.debug | default('false') }}
+      APP_LOG_LEVEL={{ app.env.loglevel|d('info') }}
+      {% if app.url is defined and app.url %}
+      APP_URL={{ app.url }}
+      {% else %}
+      APP_URL={{ app_proto }}://{{ app.fqdn }}/
+      {% endif %}
+      {% if app.nossl is defined and app.nossl %}
+      SESSION_SECURE_COOKIE=false
+      {% endif %}
+      MAX_LOGIN_ATTEMPTS={{ app.max_login_attempts|d(10) }}
+      {% if app.updates_url is defined and app.updates_url %}
+      APP_CHECK_UPDATES_URL={{ app.updates_url }}
+      {% endif %}
+
+      {% if app.agent is defined and app.agent.port is defined %}
+      AGENTS_PORT={{ app.agent.port }}
+      {% else %}
+      AGENTS_PORT=33333
+      {% endif %}
+
+      {% if app.path.shared is mapping %}
+      SHARED_STORAGE_PATH={{ app.path.shared.dest }}
+      BINARIES_PATH={{ app.path.shared.dest }}/binaries/
+      {% else %}
+      SHARED_STORAGE_PATH={{ app.path.shared }}
+      BINARIES_PATH={{ app.path.shared }}/binaries/
+      {% endif %}
+
+      DB_CONNECTION=mysql
+      {% if app.mysql.host is defined %}
+      DB_HOST={{ app.mysql.host }}
+      {% else %}
+      DB_HOST=localhost
+      {% endif %}
+      DB_PORT=3306
+      DB_DATABASE={{ app.mysql.database }}
+      DB_USERNAME={{ app.mysql.username }}
+      DB_PASSWORD={{ app.mysql.password }}
+      
+      {% if app.rabbitmq is defined %}
+      RABBITMQ_HOST={{ app.rabbitmq.host }}
+      RABBITMQ_PORT={{ app.rabbitmq.port|default(5672) }}
+      RABBITMQ_VHOST={{ app.rabbitmq.vhost|default('/') }}
+      RABBITMQ_USER={{ app.rabbitmq.login|default('guest') }}
+      RABBITMQ_PASSWORD={{ app.rabbitmq.password|default('guest') }}
+      {% else %}
+      RABBITMQ_HOST=127.0.0.1
+      RABBITMQ_PORT=5672
+      RABBITMQ_VHOST=/
+      RABBITMQ_USER=guest
+      RABBITMQ_PASSWORD=guest
+      {% endif %}
+
+      {% if app.redis is defined %}
+      REDIS_HOST={{ app.redis.host | default('127.0.0.1') }}
+      REDIS_PORT={{ app.redis.port | default('6379') }}
+      {% else %}
+      REDIS_HOST=127.0.0.1
+      REDIS_PORT=6379
+      {% endif %}
+      {% if app.redis is defined and app.redis.password is defined %}
+      REDIS_PASSWORD={{ app.redis.password }}
+      {% endif %}
+
+      BROADCAST_DRIVER=log
+      CACHE_DRIVER=file
+      SESSION_DRIVER=redis
+      SESSION_LIFETIME={{ app.session_lifetime|d(120) }}
+      QUEUE_DRIVER=sync
+
+      JOB_RECEIVERS={{ app.job_receivers|d(4) }}
+
+      MAIL_DRIVER=smtp
+      MAIL_HOST={{ app.mail.host | default('localhost') }}
+      MAIL_PORT={{ app.mail.port | default(25)}}
+      MAIL_USERNAME={{ app.mail.username | default('null') }}
+      MAIL_PASSWORD={{ app.mail.password | default('null') }}
+      MAIL_ENCRYPTION={{ app.mail.encryption | default('null') }}
+      MAIL_FROM_ADDRESS={{ app.mail.fromaddress | default('robot@' + app.fqdn) }}
+      MAIL_FROM_NAME={{ app.mail.fromname | default('"Nucleus Robot"') }}
+
+      PUSHER_APP_ID=
+      PUSHER_APP_KEY=
+      PUSHER_APP_SECRET=
+      PUSHER_APP_CLUSTER=mt1
+    dest: "{{ app.path.webroot }}/.env"
+    owner: nginx
+    group: "{{ app.run_as|d('nginx') }}"
+    mode: 0640
+  register: env_file_state
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: "Run `composer install` as {{ deploy_as_user|default('nginx') }}"
+  composer:
+    command: install
+    prefer_dist: True
+    working_dir: "{{ app.path.webroot }}"
+    executable: >
+      {{ php_executable|d('/usr/bin/php') }}
+  register: composer_install
+  when: False and githttps.changed or gitssh.changed or forceupdate|d(True)
+
+- name: "Run `composer install` as {{ deploy_as_user|default('nginx') }}"
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} /usr/bin/composer install
+  register: composer_install
+  args:
+    chdir: "{{ app.path.webroot }}"
+  when: githttps.changed or gitssh.changed or forceupdate|d(True)
+
+- name: Report `composer install` status
+  debug:
+    var: composer_install.stdout_lines
+  when:
+    -  composer_install is defined
+    -  composer_install.stdout_lines is defined
+  changed_when: '"Nothing to install or update" not in composer_install.stdout_lines'
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Update Artisan caches
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan {{ item }}
+  loop:
+    - config:cache
+    - route:cache
+  args:
+    chdir: "{{ app.path.webroot }}"
+  register: artisan_config_cache
+  ignore_errors: True
+  changed_when: False
+
+- name: Display Artisan log
+  debug:
+    msg: "{{ artisan_config_cache.results[0].stdout_lines + artisan_config_cache.results[1].stdout_lines }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Enforce SELinux context on Admin directory
+  shell: "/sbin/restorecon -R {{ app.path.webroot }}"
+  become_user: root
+
+- name: "Run `artisan migrate` as {{ deploy_as_user|default('nginx') }}"
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan migrate
+  args:
+    chdir: "{{ app.path.webroot }}"
+  run_once: "{{ migrate_once|d(True)}}"
+  when:
+    - migrate_database|d(True)
+    - githttps.changed or gitssh.changed or forceupdate|d(True)
+  register: artisan_migrate_log
+  ignore_errors: True
+  changed_when: artisan_migrate_log.stdout_lines[0] != "Nothing to migrate."
+
+- name: Report `artisan migrate` status
+  debug:
+    var: artisan_migrate_log.stdout_lines
+  when:
+    - artisan_migrate_log is defined
+    - artisan_migrate_log.stdout_lines is defined
+  changed_when: artisan_migrate_log.stdout_lines[0] != "Nothing to migrate."
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Check environments
+  shell: >
+    mysql --raw --silent --skip-column-names
+    --host='{{ app.mysql.host|d("localhost") }}'
+    --user='{{ app.mysql.username }}'
+    --password='{{ app.mysql.password }}'
+    {{ app.mysql.database }}
+    --execute='select count(1) from environments;'
+  register: environment_count
+  run_once: True
+  changed_when: False
+
+- name: Make sure default environment exists on fresh install
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan internal:create_env
+    {{ app.default_environment|d('Default') }}
+  args:
+    chdir: "{{ app.path.webroot }}"
+  when:
+    - environment_count.stdout is defined
+    - environment_count.stdout|int == 0
+  ignore_errors: True
+
+- name: Update default Agent configuration
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan settings:agent
+    --storage {{ agent_settings.storage|quote }}
+    --ids.path {{ agent_settings.idspath|d('C:\Program Files\Adobe\Adobe InDesign Server 2023')|quote }}
+    --thread_multiplier {{ agent_settings.tmultiplier|d('2') }}
+    --service_instances_percentage {{ agent_settings.sinstancespercent|d(25) }}
+    --ids.lifetime {{ agent_settings.idslifetime|d(6) }}
+    --queue.limit {{ agent_settings.qlimit|d(10000) }}
+    --cache.free_space {{ agent_settings.cachedu|d(1000) }}
+    --cache.size_limit {{ agent_settings.cachelim|d(0) }}
+  args:
+    chdir: "{{ app.path.webroot }}"
+  register: agent_settings_log
+  when: agent_settings is defined and agent_settings is mapping
+
+- name: Report Agent configuration update result
+  debug:
+    var: agent_settings_log.stdout_lines
+  when:
+    - agent_settings_log is defined
+    - agent_settings_log.stdout_lines is defined
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Update default IMS configuration
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan settings:ims
+    --storage {{ ims_settings.storage|quote }}
+    --queue.dsn {{ ims_settings.qdsn|d('localhost:6379')|quote }}
+    --thread_multiplier {{ ims_settings.tmul|d(1) }}
+    --magick.script {{ ims_settings.mscript|d(0) }}
+  args:
+    chdir: "{{ app.path.webroot }}"
+  register: ims_settings_log
+  when: ims_settings is defined and ims_settings is mapping
+
+- name: Report IMS configuration update result
+  debug:
+    var: ims_settings_log.stdout_lines
+  when:
+    - ims_settings_log is defined
+    - ims_settings_log.stdout_lines is defined
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Set up Artisan scheduler systemd unit file
+  copy:
+    content: |+
+      [Unit]
+      Description=Nucleus Artisan scheduler
+      After=network.target
+
+      [Service]
+      User={{ app.run_as|d('nginx') }}
+      Group={{ app.run_as|d('nginx') }}
+      WorkingDirectory={{ app.path.webroot }}
+      ExecStart={{ php_executable|d('/usr/bin/php') }} artisan app:scheduler
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/artisan.service
+  register: artisanservice
+  become_user: root
+
+- name: Notify Systemd on Artisan service file change
+  shell: /bin/systemctl daemon-reload
+  when: artisanservice is defined and artisanservice.changed
+  become_user: root
+
+- name: Set up Artisan service
+  service:
+    name: artisan
+    enabled: True
+    state: restarted
+  become_user: root
+  when: >
+    'standalone' in group_names or force_sd_scheduler|d(False)
+
+- name: Add global admin accounts
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan
+    internal:create_global_admin
+    {{ item.username }} {{ item.password | quote }}
+  args:
+    chdir: "{{ app.path.webroot }}"
+  loop: "{{ app.global_admins|d([]) }}"
+  loop_control:
+    label: "{{ item.username }}"
+  register: user_accounts_log
+  ignore_errors: True
+  no_log: true
+
+- name: Report user account maintenance results
+  debug:
+    msg: "{{ item.stdout }}"
+  loop: >
+    {{ user_accounts_log.results|list }}
+  loop_control:
+    label: "{{ item.end }}"
+  failed_when: False
+  when: user_accounts_log.results is defined
+
+- name: Maintain user passwords
+  shell: >
+    {{ php_executable|d('/usr/bin/php') }} artisan
+    internal:change_user_password
+    {{ item.username }} {{ item.password | quote }}
+  args:
+    chdir: "{{ app.path.webroot }}"
+  loop: "{{ app.users|d([]) }}"
+  loop_control:
+    label: "{{ item.username }}"
+  changed_when: True
+  register: user_paswords_log
+
+- name: Report user password maintenance errors
+  debug:
+    msg: "error: {{ item.stdout }}"
+  loop: >
+    {{ user_paswords_log.results|rejectattr('stdout', 'equalto', 'Password successfully changed')|list }}
+  loop_control:
+    label: "{{ item.end }}"
+  failed_when: True # loop filter detects errors
+  when: user_paswords_log.results is defined

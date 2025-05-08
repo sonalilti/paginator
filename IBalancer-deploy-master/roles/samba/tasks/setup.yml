@@ -1,0 +1,31 @@
+- name: manage configuration
+  copy:
+    dest: "{{ samba_vars.conf.path }}"
+    content: "{{ samba_vars.conf.gist }}"
+    owner: root
+    group: root
+    mode: 0640
+  register: samba_config
+
+- name: start and enable services
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: True
+  loop:
+    - smb
+    - nmb
+  when: samba_config.changed
+
+- name: manage user accounts - UNIX
+  user:
+    name: "{{ item.user }}"
+  loop: "{{ samba_vars.user.accounts }}"
+
+- name: manage user accounts - TDB
+  shell: >
+   (echo {{ item.pass }}; echo {{ item.pass }}) | smbpasswd -Las {{ item.user }}
+  loop: "{{ samba_vars.user.accounts }}"
+  when: samba_vars.user.backend == "tdb"
+  ignore_errors: yes
+  changed_when: False

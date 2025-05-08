@@ -1,0 +1,35 @@
+- name: Procure associated software packages
+  yum:
+    name:
+      - git
+    state: present
+
+- name: Find out `nginx` user's home directory
+  shell: getent passwd | grep nginx | cut -d ':' -f 6
+  register: userinfo
+  changed_when: False
+
+- name: Prepare `nginx` user's home for deployment with Ansible
+  file:
+    path:  "{{ item }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: 0750
+  loop:
+    - "{{ userinfo.stdout }}/.composer/"
+    - "{{ userinfo.stdout }}/.ansible/tmp"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Procure document root directory
+  file:
+    path:  "{{ app.path.webroot }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: "0755"
+
+- name: deploy
+  import_tasks: deploy.yml
+  become: True
+  become_user: "{{ deploy_as_user|default('nginx') }}"

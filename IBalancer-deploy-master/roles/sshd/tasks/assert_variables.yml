@@ -1,0 +1,7 @@
+---
+- name: "Check sshd and honeypot for port collision"
+  assert:
+    that: "22 not in sshd_vars.ports"
+    msg: |-
+      sshd is in conflict with honeypot as port 22 is within sshd_vars.ports
+  when: sshd_vars.honeypot

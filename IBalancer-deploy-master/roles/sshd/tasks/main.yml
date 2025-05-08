@@ -1,0 +1,20 @@
+- name: sanity check mandatory variables
+  import_tasks: assert_variables.yml
+
+- name: manage Secure Shell service
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}.yml"
+        - "generic_{{ ansible_os_family|lower }}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+  when: sshd is defined
+
+- name: make sure configuration changes have been applied
+  service:
+    name: sshd
+    state: reloaded
+  changed_when: False
+  when: sshd is defined

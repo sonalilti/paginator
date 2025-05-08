@@ -1,0 +1,49 @@
+---
+- name: Install prerequisite software packages
+  yum:
+    name: >
+      {% if ansible_distribution_major_version|int > 7 %}python3-policycoreutils{% else %}policycoreutils-python{% endif %}
+    state: present
+              
+- name: Make sure selinux recognizes all sshd_vars.ports as legitimate
+  seport:
+    ports: "{{ item }}"
+    proto: tcp
+    setype: ssh_port_t
+    state: present
+  loop: "{{ sshd_vars.ports }}"
+  register: selinux
+  ignore_errors: True
+
+- debug:
+    msg: |
+      Looks like SELinux is disabled or broken.
+      Playbook will ignore this error and proceed.
+      Rerun this playbook if you enable or fix SELinux.
+  when: selinux is failed
+
+- name: Maintain main configuration file
+  template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: 0600
+
+- name: Maintain HostCertificate
+  copy:
+    content: "{{ sshd_vars.hostcertificate_content }}"
+    dest: "{{ sshd_vars.hostcertificate }}"
+  when: sshd_vars.hostcertificate != "none"
+
+- name: Maintian TrustedUserCAKeys
+  copy:
+    content: "{{ sshd_vars.trustedusercakeys_content }}"
+    dest: "{{ sshd_vars.trustedusercakeys }}"
+  when: sshd_vars.trustedusercakeys != "none"
+
+- name: Maintain AuthorizedPrincipalsFile
+  copy:
+    content: "{{ sshd_vars.authorizedprincipalsfile_content }}"
+    dest: "{{ sshd_vars.authorizedprincipalsfile }}"
+  when: sshd_vars.authorizedprincipalsfile != "none"

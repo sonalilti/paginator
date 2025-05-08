@@ -1,0 +1,66 @@
+- name: Is ssl certificate/key provided?
+  assert:
+    that: 
+      - app.ssl.key is defined and app.ssl.key
+      - app.ssl.bundle is defined and app.ssl.bundle
+    msg: |
+      If you wish to use pre-issued certificate make sure to provide both
+      app.ssl.key and app.ssl.bundle. If not, remove app.ssl from inventory.
+  when:
+    - app.ssl is defined
+
+- name: Is email address provided for Let's Encrypt account?
+  assert:
+    that:
+      - letsencrypt.contact is defined and letsencrypt.contact
+    msg: |
+      Let's Encrypt account registration is not possible without a contact email address.
+      Provide one via `letsencrypt.contact` variable. It is also used for renewal notifications.
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+
+- name: Are database settings correct?
+  assert:
+    that:
+      - app.mysql is defined
+      - app.mysql.database is defined
+      - app.mysql.username is defined
+      - app.mysql.password is defined
+    msg: |
+      The following database settings are mandatory and must be defined:
+        app.mysql.database
+        app.mysql.username
+        app.mysql.password
+
+- name: Is remote database server in use?
+  assert:
+    that:
+      - app.mysql.host != '127.0.0.1'
+      - app.mysql.host != 'localhost'
+    msg: |
+      If you wish to use local instance of SQL server unset `app.mysql.host` variable
+  when: app.mysql.host is defined
+  ignore_errors: True
+    
+- name: Is remote Redis server in use?
+  assert:
+    that:
+      - app.redis.host is defined
+      - app.redis.host != '127.0.0.1'
+      - app.redis.host != 'localhost'
+    msg: |
+      If you wish to use local instance of Redis unset `app.redis` variable
+      To use external server please provide it's address via `app.redis.host` var
+  when: app.redis is defined
+  ignore_errors: True
+    
+- name: Is standalone_interface variable provides?
+  assert:
+    that: standalone_interface is defined and standalone_interface
+    msg: |
+      Assuming this host is part of HA environment. Playbook will proceed.
+      If you wish to host MariaDB and Samba on this instance, define the `standalone_interface`
+      variable and make sure to provide correct interface name.
+  ignore_errors: True
+    

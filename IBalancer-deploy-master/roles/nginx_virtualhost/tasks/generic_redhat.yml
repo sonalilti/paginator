@@ -1,0 +1,39 @@
+---
+- name: "Make sure policycoreutils are in place"
+  yum:
+    pkg:
+      - libselinux-python
+      - policycoreutils-python
+    state: present
+
+- name: "Maintain seport"
+  seport:
+    state: present
+    ports: "{% if vhost_vars.ssl %}{{ vhost_vars.ssl_port }}{% else %}{{ vhost_vars.port }}{% endif %}"
+    proto: tcp
+    setype: http_port_t
+  register: selinux
+  ignore_errors: True
+
+- debug:
+    msg: |
+      Looks like SELinux is disabled or broken.
+      Playbook will ignore this error and proceed.
+      Rerun this playbook if you enable or fix SELinux.
+  when: selinux is failed
+
+- name: "Maintain fcontext"
+  sefcontext:
+    state: present
+    target: "{{ item.target }}"
+    setype: "{{ item.setype }}"
+  loop: "{{ vhost_vars.sefcontext }}"
+  when: selinux is not failed
+
+- name: "Maintain seboolean"
+  seboolean:
+    name: "{{ item }}"
+    state: yes
+    persistent: yes
+  loop: "{{ vhost_vars.seboolean }}"
+  when: selinux is not failed

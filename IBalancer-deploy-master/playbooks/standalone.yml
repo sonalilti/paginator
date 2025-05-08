@@ -1,0 +1,374 @@
+- name: Check inventory variables for compliance
+  hosts: all
+  run_once: True
+  gather_facts: False
+  become: no
+  tags:
+    - always
+
+  tasks:
+
+    - name: Is ssl certificate/key provided?
+      assert:
+        that: 
+          - app.ssl.key is defined and app.ssl.key
+          - app.ssl.bundle is defined and app.ssl.bundle
+        msg: |
+          If you wish to use pre-issued certificate make sure to provide both
+          app.ssl.key and app.ssl.bundle. If not, remove app.ssl from inventory.
+      when:
+        - app.ssl is defined
+
+    - name: Is email address provided for Let's Encrypt account?
+      assert:
+        that:
+          - letsencrypt.contact is defined and letsencrypt.contact
+        msg: |
+          Let's Encrypt account registration is not possible without a contact email address.
+          Provide one via `letsencrypt.contact` variable. It is also used for renewal notifications.
+      when:
+        - app.ssl is not defined
+        - app.nossl is not defined or not app.nossl
+
+    - name: Are database settings correct?
+      assert:
+        that:
+          - app.mysql is defined
+          - app.mysql.database is defined
+          - app.mysql.username is defined
+          - app.mysql.password is defined
+        msg: |
+          The following database settings are mandatory and must be defined:
+            app.mysql.database
+            app.mysql.username
+            app.mysql.password
+
+    - name: Is remote database server in use?
+      assert:
+        that:
+          - app.mysql.host != '127.0.0.1'
+          - app.mysql.host != 'localhost'
+        msg: |
+          If you wish to use local instance of SQL server unset `app.mysql.host` variable
+      when: app.mysql.host is defined
+      ignore_errors: True
+        
+    - name: Is remote Redis server in use?
+      assert:
+        that:
+          - app.redis.host is defined
+          - app.redis.host != '127.0.0.1'
+          - app.redis.host != 'localhost'
+        msg: |
+          If you wish to use local instance of Redis unset `app.redis` variable
+          To use external server please provide it's address via `app.redis.host` var
+      when: app.redis is defined
+      ignore_errors: True
+        
+    - name: Is git remote known?
+      assert:
+        that: git.remote is defined
+        msg: Cannot deploy code when git remote is not defined
+
+    - name: Is desired git tag/branch known?
+      assert:
+        that: git.tag is defined
+        msg: Cannot deploy code when desired git tag/branch is not known
+
+    - name: Is deployment being performed by appropriate user?
+      assert:
+        that: deploy_as_user in [ "nginx", "root" ]
+        msg: |
+          It only makes sense to perform deployment as Web Server user `nginx` or as `root`:
+          `root` has power to reset file ownership after deployment, `nginx` doesn't have to
+      when: deploy_as_user is defined
+
+    - name: Are git authentication credentials present?
+      assert:
+        that: >
+         git.key is defined
+         or
+         git.remote is search('https?://[\w\d]{4,}@.+')
+         or
+         git.remote is search('https?://[^:]+:[^@]+@.+')
+        msg: |+
+          WARNING! You do not have `git.key` defined for ssh authentication and `git.remote`
+          does not seem to contain user:password or auhentication token. This warning won't
+          interrupt execution but it is likely to fail as Nucleus's github repo is private.
+
+          The easiest way to set up authentication is to use GitHub token. Make sure you can
+          access https://github.com/SiliconPublishing/IBalancer.git with browser. Contact a
+          SiliconPublishing representative if not. Once access is granted and confirmed go to
+          https://github.com/settings/tokens and generate Personal access token with `repo`
+          checkbox ON and append it to repository URI like this:
+          https://YOURAUTHENTICATIONTOKEN@github.com/SiliconPublishing/IBalancer.git
+      ignore_errors: True
+
+    - name: Is `sshd.passwordauthentication` set?
+      assert:
+        that:
+          - sshd.passwordauthentication is defined
+          - sshd.pubkeyauthentication   in [ "yes", "no" ]
+          - sshd.passwordauthentication in [ "yes", "no" ]
+        msg: |+
+          In order to avoid unpleasant surprises please make sure
+          to set at least two following variables explicitly  (use quotes!) :
+            sshd.pubkeyauthentication   - recommended value is "yes"
+            sshd.passwordauthentication - recommended value is "no"
+          Optional settings:
+            sshd.address_family       - default value is "inet"
+            sshd.listen_address       - default value is "0.0.0.0"
+            sshd.permitrootlogin      - default value is "without-password"
+            sshd.permitemptypasswords - default value is "no"
+              ... and more, see `roles/sshd/defaults/main.yml`
+
+          If your sshd is pre-configured and you wish to keep it as is undefine `sshd` variable
+      when: sshd is defined
+
+    - name: Are Domains and Aliases being defined correctly?
+      assert:
+        that:
+          - app.fqdn is defined
+          - app.alias is not defined
+        msg: |+
+          WARNING!
+
+          The `app.alias` variable is ambiguous, it has been replaced with `app.privatedn`
+          Playbook will treat `app.alias` as `app.privatedn` and keep working  but  it is
+          recommended to update your inventory file.
+
+          A reminder on purpose of each variable:
+           app.fqdn       - Fully Qualified Public Domain Name for Admin (string) mandatory
+           app.aliases    - a list of web aliases for the FQDN             (list)  optional
+           app.preivatedn - private DN for internal use                  (string)  optional
+           app.alias      - same as above but ambiguous                          deprecated
+      ignore_errors: True
+
+    - name: Treat `app.alias` as `app.privatedn`
+      set_fact:
+        app:
+          privatedn: "{{ app.alias }}"
+      when: app.privatedn is not defined and app.alias is defined and app.alias
+
+    - name: Set php.version to default value of "73" if not defined 
+      set_fact:
+        php:
+          version: "73"
+      when: php.version is not defined
+
+
+- name: Setup Operating System
+  hosts: all:!chromeagents
+  gather_facts: True
+  become: yes
+  tags:
+    - base
+  roles:
+    - sdadmin_os_prepare
+
+
+- name: Setup Admin LEMP suite
+  hosts: ~(standalone|admin)
+  gather_facts: True
+  become: yes
+  tags:
+    - software
+    - lemp
+  roles:
+    - sdadmin_setup
+
+
+- name: Setup IMS
+  hosts: ~(standalone|ims)
+  gather_facts: True
+  become: yes
+  tags:
+    - software
+    - ims
+  roles:
+    - ims
+
+- name: Setup Artisan scheduler
+  hosts: artisan
+  gather_facts: True
+  become: yes
+  tags:
+    - software
+    - artisan
+  roles:
+    - scheduler
+
+
+- name: Deploy/update Admin code
+  hosts: ~(standalone|admin)
+  run_once: "{{ shared_code|d(False)}}"
+  gather_facts: True
+  become: True
+  become_user: "{{ deploy_as_user|default('nginx') }}"
+  tags:
+    - deploy
+    - admin
+  roles:
+    - sdadmin_deploy
+
+
+- name: Set up Artisan Scheduler service
+  hosts: standalone
+  gather_facts: True
+  become: yes
+  tags:
+    - deploy
+    - artisan
+
+  tasks:
+    - name: Set up Artisan scheduler systemd unit file
+      copy:
+        content: |+
+          [Unit]
+          Description=Nucleus Artisan scheduler
+          After=network.target
+    
+          [Service]
+          User={{ app.run_as|d('nginx') }}
+          Group={{ app.run_as|d('nginx') }}
+          WorkingDirectory={{ app.path.webroot }}
+          ExecStart={{ php_executable|d('/usr/bin/php') }} artisan app:scheduler
+          Restart=always
+    
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/artisan.service
+      register: artisanservice
+      become_user: root
+    
+    - name: Notify Systemd on Artisan service file change
+      shell: /bin/systemctl daemon-reload
+      when: artisanservice is defined and artisanservice.changed
+      become_user: root
+    
+    - name: Set up Artisan service
+      service:
+        name: artisan
+        enabled: True
+        state: restarted
+      become_user: root
+      when:
+        - githttps.changed or gitssh.changed or forceupdate|d(True)
+
+
+- name: Setup Admin
+  hosts: ~(standalone|admin)
+  gather_facts: True
+  run_once: True
+  become: True
+  become_user: "{{ deploy_as_user|default('nginx') }}"
+  tags:
+    - deploy
+    - setup
+
+  tasks:
+
+  - name: Maintain user accounts
+    shell: >
+      /usr/bin/php artisan internal:change_user_password
+      {{ item.username }} {{ item.password }}
+    args:
+      chdir: "{{ app.path.webroot }}"
+    loop: "{{ app.users|d([]) }}"
+    loop_control:
+      label: "{{ item.username }}"
+    changed_when: True
+    register: user_accounts_log
+
+  - name: Report user account maintenance errors
+    debug:
+      msg: "error: {{ item.stdout }}"
+    loop: >
+      {{ user_accounts_log.results|rejectattr('stdout', 'equalto', 'Password successfully changed')|list }}
+    loop_control:
+      label: "{{ item.end }}"
+    failed_when: True # loop filter detects errors
+    when:
+      - user_accounts_log.results is defined
+      - not ansible_check_mode
+
+  - name: Maintain service settings
+    shell: >
+      /usr/bin/php artisan {{ item }}
+    args:
+      chdir: "{{ app.path.webroot }}"
+    loop: "{{ artisan|d([]) }}"
+
+
+- name: Deploy/update Chrome Agents
+  hosts: chromeagents
+  gather_facts: True
+  become: True
+  tags:
+    - never
+    - chrome
+    - chromeagents
+
+  tasks:
+
+  - name: Set up `silpub-public` software repository
+    yum_repository:
+      name: silpub-public
+      description: 'Silicon Publishing public repository'
+      baseurl: https://dist.silcn.co/pulp/content/spi/Library/custom/Designer/public/
+      gpgkey: https://dist.silcn.co/pulp/content/spi/Library/custom/Designer/files/rpmsign.pub
+      enabled: True
+      gpgcheck: True
+
+  - name: Set up `google-chrome` software repository
+    yum_repository:
+      name: google-chrome
+      description: 'google-chrome'
+      baseurl: https://dl.google.com/linux/chrome/rpm/stable/x86_64
+      gpgkey: https://dl.google.com/linux/linux_signing_key.pub
+      enabled: True
+      gpgcheck: True
+
+  - name: Make sure Chrome Agent package is present and of the latest version
+    yum:
+      name: spidsn-chrome
+      state: latest
+    register: pkg
+
+  - name: Set up mountpoint for Shared folder
+    copy:
+      content: |
+        SDMNT_SOURCE="{{ sdmnt.source|d('//'~app.privatedn~'/Shared') }}"
+        SDMNT_FSTYPE={{ sdmnt.fstype|d('cifs') }}
+        SDMNT_OPTIONS="{{ sdmint.options|d('uid=spidsn,gid=spidsn,user=nginx,pass=anonymous,_netdev,x-systemd.automount') }}"
+      dest: /etc/silpub/designer/automount
+      owner: root
+      group: root
+      mode: 0640
+
+  - name: Adjust Chrome Agent arguments
+    lineinfile:
+      path: /etc/silpub/designer/service/chrome.args
+      regexp: '^ARGS='
+      line: "ARGS='--node-port={{ chromesrv.node_port|d(33365) }} --node-name={{ ansible_fqdn }}'"
+
+  - name: Make sure Firewalld reads Chrome Agent service definition
+    command: /bin/firewall-cmd --reload
+    when: pkg.changed
+
+  - name: Make sure Firewalld permits connections to Chrome Agent
+    ansible.posix.firewalld:
+      service: spidsn-chrome
+      permanent: True
+      immediate: True
+      state: enabled
+
+  - name: Activate mountpoint and Chrome Agent service
+    service:
+      name: "{{ item }}"
+      enabled: True
+      state: started
+    loop:
+      - srv-smb-sdadmin.automount
+      - spidsn-srv@chrome.service
+

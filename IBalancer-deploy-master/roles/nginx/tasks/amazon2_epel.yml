@@ -1,0 +1,13 @@
+---
+- name: Procure epel repository
+  yum:
+    name: 'https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm'
+    state: present
+  ignore_errors: True
+    
+- name: Procure packages
+  yum:
+    name:
+      - nginx
+      - nginx-filesystem
+      - openssl11-libs-1.1.1g

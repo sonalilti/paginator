@@ -1,0 +1,41 @@
+- name: sanity check mandatory variables
+  import_tasks: assert_variables.yml
+
+- name: manage packages
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}_{{mariadb_vars.source}}.yml"
+        - "generic_{{ ansible_os_family|lower }}_{{mariadb_vars.source}}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+
+- name: procure configuration files
+  copy:
+    dest: "{{ mariadb_confdir|d('/etc/my.cnf.d') }}/{{ item.name }}.cnf"
+    content: "{{ item.gist }}"
+    owner: "{{ item.owner|d('root') }}"
+    group: "{{ item.group|d('root') }}"
+    mode: "{{ item.mode|d('0644') }}"
+  loop: "{{ mariadb_vars.mycnf_includes|d([]) }}"
+  loop_control:
+    label: "Procuring {{ mariadb_confdir|d('/etc/my.cnf.d') }}/{{ item.name }}.cnf"
+  when: mariadb_vars.server
+
+- name: set up service
+  service:
+    name: "{{ mariadb_service|d('mariadb') }}"
+    enabled: "{{ mariadb_vars.enabled }}"
+    state: "{% if mariadb_vars.started %}started{% else %}stopped{% endif %}"
+  when: mariadb_vars.server
+
+- name: manage MySQL users
+  mysql_user:
+    name: "{{ item.username }}"
+    priv: "{{ item.privileges }}"
+    password: "{{ item.password }}"
+    state: present
+  loop: "{{ mariadb_vars.users|d([]) }}"
+  loop_control:
+    label: "{{ item.username }}"

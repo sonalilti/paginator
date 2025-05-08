@@ -1,0 +1,4 @@
+- name: deploy
+  import_tasks: deploy.yml
+  become: True
+  become_user: "{{ deploy_as_user|default('nginx') }}"

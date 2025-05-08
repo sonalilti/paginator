@@ -1,0 +1,2 @@
+---
+vhost_vars: "{{ vhost_arrangement|combine(vhost_override|d({})|combine(vhost|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

@@ -1,0 +1,6 @@
+galaxy_info:
+  author: Silicon Publishing OPS Team <ops@siliconpublishing.com>
+  description: Deploy IMS
+  company: Silicon Publishing
+
+  min_ansible_version: 2.9

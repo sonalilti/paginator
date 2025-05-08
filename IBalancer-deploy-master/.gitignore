@@ -1,0 +1,6 @@
+terraform.tfstate
+.terraform.lock.hcl
+inventory.*
+*.swp
+*.bak
+.terraform

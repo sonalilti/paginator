@@ -1,0 +1,2 @@
+---
+samba_vars: "{{ samba_arrangement|combine(samba_override|d({})|combine(samba|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

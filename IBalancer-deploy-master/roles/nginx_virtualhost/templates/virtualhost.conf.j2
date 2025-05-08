@@ -1,0 +1,46 @@
+server {
+
+{% if vhost_vars.ssl %}
+    listen {{ vhost_vars.ssl_port }}{% if vhost_vars.default_server %} default_server{% endif %} ssl;
+
+{% if vhost_vars.ssl_certificate_bundle is defined %}
+    ssl_certificate {{ vhost_vars.ssl_certificate_bundle }};
+{% else %}
+    ssl_certificate {{ vhost_vars.pki_root }}/issued/{{ vhost_vars.server_name }}-fullchain.pem;
+{% endif %}
+{% if vhost_vars.ssl_certificate_key is defined %}
+    ssl_certificate_key {{ vhost_vars.ssl_certificate_key }};
+{% else %}
+    ssl_certificate_key {{ vhost_vars.pki_root }}/private/{{ vhost_vars.server_name }}.pem;
+{% endif %}
+    ssl_session_timeout {{ vhost_vars.ssl_session_timeout }};
+    ssl_session_cache {{ vhost_vars.ssl_session_cache }};
+
+    ssl_protocols {{ vhost_vars.ssl_protocols }};
+    ssl_ciphers '{{ vhost_vars.ssl_ciphers }}';
+    ssl_prefer_server_ciphers {{ vhost_vars.ssl_prefer_server_ciphers }};
+{% else %}
+    listen {{ vhost_vars.port }}{% if vhost_vars.default_server %} default_server{% endif %};
+{% endif %}
+
+    server_name
+                {{ vhost_vars.server_name }}{% for alias in vhost_vars.server_name_aliases %}
+                {{ newline }}                {{ alias }}{% endfor %};
+
+    server_tokens {{ vhost_vars.server_tokens }};
+
+{% if vhost_vars.access_log is defined %}
+    access_log {{ vhost_vars.access_log }};
+{% else %}
+    access_log /var/log/nginx/{{ vhost_vars.log_file|d(vhost_vars.server_name) }}.access.log;
+{% endif %}
+{% if vhost_vars.error_log is defined %}
+    error_log  {{ vhost_vars.error_log }};
+{% else %}
+    error_log /var/log/nginx/{{ vhost_vars.log_file|d(vhost_vars.server_name) }}.error.log;
+{% endif %}
+
+    root {{ vhost_vars.server_root }};
+
+{{ vhost_vars.body }}
+}

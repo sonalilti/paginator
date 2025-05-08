@@ -1,0 +1,9 @@
+---
+mariadb_arrangement:
+  client: True
+  server: False
+  enabled: True
+  started: True
+  source: upstream
+  version: 10.6
+  rhscl_exposed: False

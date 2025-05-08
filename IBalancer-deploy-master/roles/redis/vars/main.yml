@@ -1,0 +1,2 @@
+---
+redis_vars: "{{ redis_arrangement|combine(redis_override|d({})|combine(redis|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

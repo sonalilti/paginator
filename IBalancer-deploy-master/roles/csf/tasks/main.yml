@@ -1,0 +1,4 @@
+- import_tasks: setup.yml
+  when: csf is defined
+- import_tasks: configure.yml
+  when: csf is defined

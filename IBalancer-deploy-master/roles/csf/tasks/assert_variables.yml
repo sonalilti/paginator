@@ -1,0 +1,7 @@
+---
+- name: "Is role enabled?"
+  assert:
+    that: csf_vars.enabled
+    msg: |-
+      The `csf.enabled` variable is set to False. Skipping setup.
+  failed_when: False

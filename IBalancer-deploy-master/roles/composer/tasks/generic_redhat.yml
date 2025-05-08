@@ -1,0 +1,32 @@
+- name: "Fetch `{{ composer_vars.installer }}`"
+  get_url:
+    url: "{{ composer_vars.installer }}"
+    dest: /tmp/installer
+    validate_certs: False
+  when: composer_vars.bundle is not defined
+
+- name: Run installer
+  shell: >
+   cat /tmp/installer |
+   {{ php_bindir|d('/usr/bin') }}/php --
+   --install-dir=/usr/local/bin
+  args:
+    creates: /usr/local/bin/composer.phar
+  when: composer_vars.bundle is not defined
+
+- name: "Upload `{{ composer_vars.bundle }}`"
+  copy:
+    src: "{{ composer_vars.bundle }}"
+    dest: /usr/local/bin/composer.phar
+  when: composer_vars.bundle is defined
+
+- name: Make executable
+  file:
+    path: /usr/local/bin/composer.phar
+    mode: 0755
+
+- name: Symlink `composer.phar` to `composer`
+  file:
+    src: /usr/local/bin/composer.phar
+    dest:  /usr/local/bin/composer
+    state: link

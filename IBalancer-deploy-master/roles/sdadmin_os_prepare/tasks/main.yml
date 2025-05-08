@@ -1,0 +1,119 @@
+- name: Procure service user group for `nginx`
+  group:
+    gid: "{{ nginx_gid|d(1986) }}"
+    name: nginx
+
+- name: Procure service user account for `nginx`
+  user:
+    uid: "{{ nginx_uid|d(1986) }}"
+    name: nginx
+    group: nginx
+    home: /var/lib/nginx
+    create_home: False
+    shell: /dev/null
+    system: True
+  failed_when: False
+
+- name: Procure optional dedicated service account
+  user:
+    uid: "{{ app.run_uid|d(1987) }}"
+    name: "{{ app.run_as }}"
+    home: "{{ app.path.shared }}"
+    create_home: False
+    shell: /dev/null
+    system: True
+  when: app.run_as is defined and app.run_as
+
+- name: Make sure `nginx` is member of php-fpm's effective group
+  user:
+    name: nginx
+    groups: "{{ app.run_as }}"
+  when: app.run_as is defined and app.run_as
+
+- name: Find out `nginx` user's home directory
+  shell: getent passwd | grep nginx | cut -d ':' -f 6
+  register: userinfo
+  changed_when: False
+
+- name: Prepare `nginx` user's home for deployment with Ansible
+  file:
+    path:  "{{ item }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: 0750
+  loop:
+    - "{{ userinfo.stdout }}/.composer/"
+    - "{{ userinfo.stdout }}/.ansible/tmp"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Procure document root directory
+  file:
+    path:  "{{ app.path.webroot }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: "0755"
+
+- name: Procure application directories
+  file:
+    path:  "{{ item.path }}"
+    state: directory
+    owner: "{{ app.run_as|d('nginx') }}"
+    group: "{{ app.run_as|d('nginx') }}"
+  loop:
+    - path: "{{ app.path.shared }}"
+    - path: "{{ app.path.shared }}/renders"
+    - path: "{{ app.path.shared }}/binaries"
+    - path: "{{ app.path.shared }}/frontends"
+    - path: "{{ app.path.shared }}/font_previews"
+  when: app.path.shared is not mapping
+
+- name: Procure blockdev application mountpoint
+  block:
+    - community.general.filesystem:
+        fstype: "{{ app.path.shared.fstype }}"
+        dev: "{{ app.path.shared.src }}"
+    - ansible.posix.mount:
+        path:   "{{ app.path.shared.dest }}"
+        src:    "{{ app.path.shared.src }}"
+        fstype: "{{ app.path.shared.fstype|d('nfs') }}"
+        opts:   "{{ app.path.shared.opts|d('defaults') }}"
+        boot:   "{{ app.path.shared.boot|d(True) }}"
+        backup: True
+        state: mounted
+  when:
+    - app.path.shared is mapping
+    - app.path.shared.fstype|d('nfs') in blkdev_filesystems
+    - "'standalone' in group_names"
+
+- name: Procure netdev application mountpoint
+  block:
+    - ansible.builtin.yum:
+        pkg: "{{ app.path.shared.fstype|d('nfs') }}-utils"
+    - ansible.posix.mount:
+        path:   "{{ app.path.shared.dest }}"
+        src:    "{{ app.path.shared.src }}"
+        fstype: "{{ app.path.shared.fstype|d('nfs') }}"
+        opts:   "{{ app.path.shared.opts|d('defaults') }}"
+        boot:   "{{ app.path.shared.boot|d(True) }}"
+        backup: True
+        state: mounted
+  when:
+    - app.path.shared is mapping
+    - app.path.shared.fstype|d('nfs') in netdev_filesystems
+
+- name: Procure application directories
+  ansible.builtin.file:
+    path:  "{{ item.path }}"
+    state: directory
+    owner: "{{ app.run_as|d('nginx') }}"
+    group: "{{ app.run_as|d('nginx') }}"
+  loop:
+    - path: "{{ app.path.shared.dest }}"
+    - path: "{{ app.path.shared.dest }}/renders"
+    - path: "{{ app.path.shared.dest }}/binaries"
+    - path: "{{ app.path.shared.dest }}/frontends"
+    - path: "{{ app.path.shared.dest }}/font_previews"
+  when:
+    - app.path.shared is mapping

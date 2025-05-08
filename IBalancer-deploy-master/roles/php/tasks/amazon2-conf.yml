@@ -1,0 +1,32 @@
+---
+- name: "Advertise availability of this PHP version via /etc/motd"
+  lineinfile:
+    path: "/etc/motd"
+    line: "Yum repository amzn2extra-php{{php_vars.version[0]}}.{{php_vars.version[1]}} is enabled. Default php packages have been replaced with php{{php_vars.version[0]}}.{{php_vars.version[1]}}."
+  when: 
+    - php_vars.advertise
+    - php_vars.state != "absent"
+    - php_vars.state != "removed"
+
+- name: "Unadvertise availability of this PHP version via /etc/motd in case of removal"
+  lineinfile:
+    path: "/etc/motd"
+    line: "Yum repository amzn2extra-php{{php_vars.version[0]}}.{{php_vars.version[1]}} is enabled. Default php packages have been replaced with php{{php_vars.version[0]}}.{{php_vars.version[1]}}."
+    state: absent
+  when: php_vars.state == "absent" or php_vars.state == "removed"
+
+- name: "Keep default pool /etc/php-fpm.d/www.conf active"
+  command: "mv www.conf.disabled www.conf"
+  args:
+    chdir: "/etc/php-fpm.d/"
+    creates: "/etc/php-fpm.d/www.conf"
+    removes: "/etc/php-fpm.d/www.conf.disabled"
+  when: php_vars.fpm_keep_default_pool
+
+- name: "Keep default pool /etc/php-fpm.d/www.conf disabled"
+  command: "mv www.conf www.conf.disabled"
+  args:
+    chdir: "/etc/php-fpm.d/"
+    creates: "/etc/php-fpm.d/www.conf"
+    removes: "/etc/php-fpm.d/www.conf.disabled"
+  when: not php_vars.fpm_keep_default_pool

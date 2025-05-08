@@ -1,0 +1,18 @@
+blkdev_filesystems:
+  - btrfs
+  - ext2
+  - ext3
+  - ext4
+  - ext4dev
+  - f2fs
+  - lvm
+  - ocfs2
+  - reiserfs
+  - xfs
+  - vfat
+  - swap
+  - ufs
+
+netdev_filesystems:
+  - nfs
+  - cifs

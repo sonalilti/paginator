@@ -1,0 +1,193 @@
+- name: Procure OS log directory
+  file:
+    owner: nginx
+    group: nginx
+    mode: 0755
+    path: /data/shared/logs/os
+    state: directory
+
+- name: Install collector script
+  copy:
+    owner: root
+    group: root
+    mode: 0750
+    dest: /usr/libexec/sdlogcollect.sh
+    content: |2
+      #!/bin/bash
+      DATE="$(date +%F)"
+      {% if app.path.shared is mapping %}
+      /bin/cp -f /var/log/nginx/{{ app.fqdn }}.error.log \
+        "{{ app.path.shared.dest }}/logs/os/nginx-admin-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/cp -f /var/log/nginx/{{ app.privatedn }}.error.log \
+        "{{ app.path.shared.dest }}/logs/os/nginx-services-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/cp -f /var/log/nginx/error.log \
+        "{{ app.path.shared.dest }}/logs/os/nginx-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/cp -f /var/log/php-fpm/error.log \
+        "{{ app.path.shared.dest }}/logs/os/fpm-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/chown nginx: \
+        "{{ app.path.shared.dest }}/logs/os/nginx-admin-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" \
+        "{{ app.path.shared.dest }}/logs/os/nginx-services-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" \
+        "{{ app.path.shared.dest }}/logs/os/nginx-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" \
+        "{{ app.path.shared.dest }}/logs/os/fpm-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      {% else %}
+      /bin/cp -f /var/log/nginx/{{ app.fqdn }}.error.log \
+        "{{ app.path.shared }}/logs/os/nginx-admin-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/cp -f /var/log/nginx/{{ app.privatedn }}.error.log \
+        "{{ app.path.shared }}/logs/os/nginx-services-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/cp -f /var/log/nginx/error.log \
+        "{{ app.path.shared }}/logs/os/nginx-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/cp -f /var/log/php-fpm/error.log \
+        "{{ app.path.shared }}/logs/os/fpm-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      /bin/chown nginx: \
+        "{{ app.path.shared }}/logs/os/nginx-admin-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" \
+        "{{ app.path.shared }}/logs/os/nginx-services-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" \
+        "{{ app.path.shared }}/logs/os/nginx-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" \
+        "{{ app.path.shared }}/logs/os/fpm-{{ ansible_facts.default_ipv4.address }}-${DATE}.log" || true
+      {% endif %}
+
+- name: Set up Logrotate
+  copy:
+    owner: root
+    group: root
+    mode: 0644
+    dest: /etc/logrotate.sdsrv
+    content: |2
+      /var/log/nginx/*.log
+      /usr/local/openresty/nginx/logs
+      {
+        create 0640 nginx root
+        daily
+        rotate 10
+        missingok
+        notifempty
+        compress
+        delaycompress
+        sharedscripts
+        postrotate
+            /bin/kill -SIGUSR1 `cat {% if app.use_lua|d(False) %}/usr/local/openresty/nginx/logs/nginx.pid{% else %}/run/nginx.pid{% endif %} 2>/dev/null` 2>/dev/null || echo "Signal not sent to nginx process"
+        endscript
+      }
+      /var/log/php-fpm/*log {
+        daily
+        rotate 10
+        missingok
+        notifempty
+        sharedscripts
+        delaycompress
+        postrotate
+            /bin/kill -SIGUSR1 `cat /run/php-fpm/php-fpm.pid 2>/dev/null` 2>/dev/null || echo "Signal not sent to php-fpm process"
+        endscript
+      }
+
+- name: Install collector scraper timer
+  copy:
+    dest: /etc/systemd/system/sd-collector-scraper.timer
+    content: |2
+      [Unit]
+      Description=Collect certain system logs for parsing on regular basis
+
+      [Timer]
+      OnCalendar=*-*-* *:*:30
+      AccuracySec=1us
+
+      [Install]
+      WantedBy=timers.target
+
+- name: Install collector scraper service
+  copy:
+    dest: /etc/systemd/system/sd-collector-scraper.service
+    content: |2
+      [Unit]
+      Description=Collect certain system logs for parsing
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/libexec/sdlogcollect.sh
+      Nice=19
+      IOSchedulingClass=best-effort
+      IOSchedulingPriority=7
+      LockPersonality=true
+      MemoryDenyWriteExecute=true
+      PrivateDevices=true
+      PrivateTmp=true
+      ProtectClock=true
+      ProtectControlGroups=true
+      ProtectHostname=true
+      ProtectKernelLogs=true
+      ProtectKernelModules=true
+      ProtectKernelTunables=true
+      ProtectSystem=full
+      RestrictNamespaces=true
+      RestrictRealtime=true
+
+- name: Install collector logrotate timer
+  copy:
+    dest: /etc/systemd/system/sd-collector-rotate.timer
+    content: |2
+      [Unit]
+      Description=Collect and rotates certain system logs for parsing on regular basis
+
+      [Timer]
+      OnCalendar=*-*-* 23:59:58
+      AccuracySec=1us
+
+      [Install]
+      WantedBy=timers.target
+
+- name: Install collector logrotate service
+  copy:
+    dest: /etc/systemd/system/sd-collector-rotate.service
+    content: |2
+      [Unit]
+      Description=Collect and rotates certain system logs for parsing
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/sbin/logrotate /etc/logrotate.sdsrv
+      Nice=19
+      IOSchedulingClass=best-effort
+      IOSchedulingPriority=7
+      LockPersonality=true
+      MemoryDenyWriteExecute=true
+      PrivateDevices=true
+      PrivateTmp=true
+      ProtectClock=true
+      ProtectControlGroups=true
+      ProtectHostname=true
+      ProtectKernelLogs=true
+      ProtectKernelModules=true
+      ProtectKernelTunables=true
+      ProtectSystem=full
+      RestrictNamespaces=true
+      RestrictRealtime=true
+
+- name: Disable stock logrotate config files
+  copy:
+    dest: "{{ item }}"
+    content: ''
+  loop:
+    - /etc/logrotate.d/nginx
+    - /etc/logrotate.d/php-fpm
+
+- name: notify Systemd on service file change
+  shell: /bin/systemctl daemon-reload
+
+- name: Enable collector services
+  service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - sd-collector-rotate.service
+    - sd-collector-scraper.service
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Enable collector timers
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - sd-collector-rotate.timer
+    - sd-collector-scraper.timer
+  ignore_errors: "{{ ansible_check_mode }}"
+

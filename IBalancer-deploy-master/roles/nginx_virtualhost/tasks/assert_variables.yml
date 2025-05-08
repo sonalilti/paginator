@@ -1,0 +1,28 @@
+---
+- name: "vhost_vars.server_name list must be defined"
+  assert:
+    that:
+      - vhost_vars.server_name is defined and vhost_vars.server_name
+    msg: >-
+      Please define 'vhost_vars.server_name'  variable.
+      There is no default value for this variable.
+  with_items: "{{ vhost_vars.server_name }}"
+
+- name: "vhost_vars.server_root must be defined and compliant"
+  assert:
+    that:
+      - vhost_vars.server_root is defined and vhost_vars.server_root is search('^/.+')
+    msg: >-
+      Please define 'vhost_vars.server_root' variable.
+      It has to be full path starting with '/'. Rule is being forced in order to avoid ambiguity.
+      Default value is '/usr/share/nginx/html'.
+
+- name: "vhost_vars.body must be defined"
+  assert:
+    that:
+      - vhost_vars.body is defined
+    msg: >-
+      Please define 'vhost_vars.body' variable.
+      There is no default value for this variable.
+      This variable is a free-form multiline block where you have to put
+      all the `location /foo { bar }` blocks and/or additional directives.

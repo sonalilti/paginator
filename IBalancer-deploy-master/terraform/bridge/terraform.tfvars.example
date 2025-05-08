@@ -1,0 +1,15 @@
+ssh_pub     = "ssh-rsa AAAAB3NzaC1 .... "
+vpn_peer    = "1.2.3.4"
+vpn_subnets = ["192.168.1.0/24", "192.168.2.0/24"]
+neighbours  = [
+  {
+    vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
+    net_id = "subnet-xxxxxxxxxxxxxxxxx"
+    prefix = "192.168.3.0/24"
+  },
+  {
+    vpc_id = "vpc-yyyyyyyyyyyyyyyyy"
+    net_id = "subnet-yyyyyyyyyyyyyyyyy"
+    prefix = "192.168.4.0/24"
+  }
+]

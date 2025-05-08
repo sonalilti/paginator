@@ -1,0 +1,75 @@
+---
+php_override:
+  with_fpm: True
+
+nginx_override:
+  user: nginx
+  client_max_body_size: 4096m
+  large_ch_buf:
+    num: 6
+    size: 32k
+
+sample_cors:
+  - name: 'access-control-max-age'
+    value: '7200'
+  - name: 'access-control-allow-origin'
+    value: '*'
+    force: True
+  - name: 'access-control-allow-methods'
+    value: 'GET, POST, PUT, DELETE, OPTIONS'
+    force: True
+  - name: 'Access-Control-Allow-Headers'
+    value: 'Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With, Cache-Control, X-SPIToken-id, X-AccessToken-id'
+    force: True
+
+rh_expected_fpm_process: "rh-php{{ php.version }}"
+
+mariadb_override:
+  server: "{% if standalone_interface|d() and not app.mysql.host|d() %}True{% else %}False{% endif %}"
+  mycnf_includes:
+    - name: sdadmin
+      gist: |
+        [server]
+        innodb_flush_log_at_trx_commit=2
+
+samba_override:
+  server: "{{ standalone_interface }}"
+  conf:
+    gist: |+
+      [global]
+        bind interfaces only = yes
+        interfaces = lo {{ standalone_interface }}
+        workgroup = MSHOME
+        idmap config * : backend = tdb
+        map to guest = Bad User
+        log level = 2
+
+      [Shared]
+        path = /data/shared
+        read only = No
+        public = yes
+        create mask = 0644
+        force user = nginx
+        force group = nginx
+
+redis_override:
+  server: "{{ standalone_interface }}"
+
+pool_override:
+  name: sdadmin
+  user: "{{ app.run_as|d('nginx') }}"
+  group: "{{ app.run_as|d('nginx') }}"
+  listen: /var/run/fpm-sdadmin.sock
+  listen_sock_owner: nginx
+  listen_sock_group: nginx
+  listen_sock_mode: "0600"
+  pm_max_requests: 600
+  admin_extra_values:
+    - value: post_max_size
+      substitute: 4096M
+    - value: upload_max_filesize
+      substitute: 4096M
+    - value: max_execution_time
+      substitute: '600'
+    - value: memory_limit
+      substitute: '512M'

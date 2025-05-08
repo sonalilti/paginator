@@ -1,0 +1,7 @@
+---
+samba_arrangement:
+  conf:
+    path: /etc/samba/smb.conf
+  user:
+    backend: "tdb"
+    accounts: []

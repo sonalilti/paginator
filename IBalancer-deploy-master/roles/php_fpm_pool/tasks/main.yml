@@ -1,0 +1,17 @@
+- name: "Sanity check mandatory variables and optionally perform other preparation steps on the controller"
+  import_tasks: assert_variables.yml
+
+- set_fact:
+    fpm_includedir: "/etc/opt/rh/rh-php{{ pool_vars.php_version }}/php-fpm.d"
+  when: >
+    ansible_distribution|lower in [ 'centos', 'redhat', 'oraclelinux' ]
+    and
+    ansible_distribution_major_version == 7
+
+- name: "Maintain '{{ pool_vars.name }}' pool configuration file"
+  template:
+    src: pool.conf.j2
+    dest: "{{ fpm_includedir|d('/etc/php-fpm.d') }}/{{ pool_vars.name }}.conf"
+    owner: "root"
+    group: "root"
+    mode: 0644

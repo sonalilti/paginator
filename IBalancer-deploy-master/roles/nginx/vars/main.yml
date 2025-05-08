@@ -1,0 +1,2 @@
+---
+nginx_vars: "{{ nginx_arrangement|combine(nginx_override|d({})|combine(nginx|d({}), list_merge='append_rp', recursive=true), list_merge='append_rp', recursive=true) }}"

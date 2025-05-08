@@ -1,0 +1,29 @@
+---
+ims_arrangement:
+  user: nginx
+  group: nginx
+  imagemagick:
+    conf_dir: /etc/ImageMagick-7
+    bin_uri: https://bin.silcn.co/mirror/ImageMagick-7.0.9.x86_64.rpm
+    libs_uri: https://bin.silcn.co/mirror/ImageMagick-libs-7.0.9.x86_64.rpm
+  potrace:
+    uri: https://bin.silcn.co/mirror/potrace.el7.x86_64.rpm
+  enabled: True
+  workdir:
+    path: /opt/Nucleus/IMS
+  binrepo:
+    uri: https://bin.silcn.co
+    binary: ims-latest.elf
+    username: Oop3heow
+    password: eFnbO0qL6bJTf6z0eIy6Rmu2pN0HJdyg
+  policy:
+    cache: ~
+    system: ~
+    resource: ~
+    delegate: []
+    module: []
+    coder: []
+    path: []
+  extra_tasks: []
+  supervisor: False
+  env: []

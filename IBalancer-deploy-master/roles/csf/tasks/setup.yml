@@ -1,0 +1,16 @@
+- name: check if csf is installed - failed state is OK
+  command: "csf -v"
+  register: csf_check
+  ignore_errors: True
+  changed_when: False
+
+- name: launch the installation sequence if previous check failed
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ ansible_distribution|lower }}{{ ansible_distribution_major_version }}.yml"
+        - "generic_{{ ansible_os_family|lower }}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+  when: csf_check is failed

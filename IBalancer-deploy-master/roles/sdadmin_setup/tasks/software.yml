@@ -1,0 +1,880 @@
+- set_fact:
+    shared_folder: "{% if app.path.shared is mapping %}{{ app.path.shared.dest }}{% else %}{{ app.path.shared }}{% endif %}"
+
+- name: Make sure hosted domains are being accessed via loopback interface
+  lineinfile:
+    path: /etc/hosts
+    line: "127.0.0.1   {{ item }}"
+  loop: "{{ app.aliases|d([]) + [app.fqdn] + [app.privatedn] }}"
+
+- name: Procure Silicon Publishing repository for recent ImageMagick
+  yum_repository:
+    name: spi_imagemagick
+    gpgcheck: False
+    repo_gpgcheck: False
+    sslverify: False
+    baseurl: 'https://ops.vmm.silcn.co/pulp/content/SPI/Library/custom/Oracle_Linux_9/imagemagick/'
+    description: Silicon Publishing ImageMagick
+    enabled: True
+    state: present
+  when:
+    - not skipreposetup|d(False) 
+    - ansible_distribution == 'OracleLinux'
+    - ansible_distribution_major_version == '9'
+
+- name: Procure associated software packages
+  yum:
+    name:
+      - git
+      - git-lfs
+      - zip
+      - unzip
+      - chrony
+      - ImageMagick
+      - audit
+    state: latest
+
+- name: Procure optional dedicated service account
+  user:
+    uid: "{{ app.run_uid|d(1987) }}"
+    name: "{{ app.run_as }}"
+    home: "{{ shared_folder }}"
+    create_home: False
+    shell: /dev/null
+    system: True
+  when: app.run_as is defined and app.run_as
+
+- name: Make sure `nginx` is member of php-fpm's effective group
+  user:
+    name: nginx
+    groups: "{{ app.run_as }}"
+  when: app.run_as is defined and app.run_as
+
+- name: Set up mail service
+  block:
+    - name: Procure mail service
+      yum:
+        name: "{{ app.mailservice|d('postfix') }}"
+        state: present
+    - name: Launch mail service
+      service:
+        name: "{{ app.mailservice|d('postfix') }}"
+        enabled: True
+        state: started
+    - name: Check if Postfix uses configuration file packaged by default
+      shell: >
+        /bin/rpm -V postfix | /bin/grep -q '/etc/postfix/main.cf'
+      failed_when: False # return code is the subject for further analisys
+      register: postfix_def_config
+      when: app.mailservice is not defined or app.mailservice == 'postfix'
+    - name: Alter default config to disable selfsigned certificate TLS
+      lineinfile:
+        path: /etc/postfix/main.cf
+        regexp: '^smtpd_tls_security_level'
+        line: smtpd_tls_security_level = none
+      when:
+        - postfix_def_config.rc is defined
+        - postfix_def_config.rc|bool
+    - name: Notify user on Laravel requirements for Postfix configuration
+      set_stats:
+        data:
+          postfix_tls: >-
+            Laravel requires MTA to be configured with a trusted ssl certificate.
+            If MTA uses a self-signed SSL certificate which does not pass verification,
+            emails can't be sent and Inspector reports the "certificate verify failed" error.
+            There are two ways to mitigate this problem.
+            One is to set up Postfix with a trusted certificate for TLS.
+            Another approach is to disable TLS in Postfix but this is only safe on localhost.
+      when:
+        - postfix_def_config.rc is defined
+        - not postfix_def_config.rc|bool
+  when: >
+    app.mail is not defined
+    or
+    app.mail.server|d('localhost') in [ 'localhost', '127.0.0.1' ]
+
+- name: Procure MySQL application database
+  mysql_db:
+    name: "{{ app.mysql.database }}"
+    state: present
+  when: app.mysql.host is not defined
+
+- name: Procure MySQL application user
+  mysql_user:
+    name: "{{ app.mysql.username }}"
+    password: "{{ app.mysql.password }}"
+    priv: "{{ app.mysql.database }}.*:ALL"
+    state: present
+  no_log: True
+  when: app.mysql.host is not defined
+
+- name: Procure Certbot package
+  yum:
+    pkg:
+      - certbot
+  when: 
+    - app.nossl is not defined or not app.nossl
+    - app.ssl is not defined
+
+- name: Procure Certbot optional packages
+  yum:
+    pkg:
+      - python3-certbot-dns-route53
+  when: 
+    - app.nossl is not defined or not app.nossl
+    - app.ssl is not defined
+    - app.envsubdomains|d(False)
+
+- name: Shut down NGINX for maintenance
+  service:
+    name: "{{ nginx_service|d('nginx') }}"
+    state: stopped
+  changed_when: False
+
+- name: Register NGINX php-fpm upstream `sdadmin`
+  copy:
+    dest: "{{ nginx_confdir|d('/etc/nginx') }}/conf.d/upstream-sdadmin.conf"
+    content: |2
+      upstream sdadmin {
+        server unix:/var/run/fpm-sdadmin.sock;
+      }
+
+- name: Set NGINX proxy timeouts
+  copy:
+    dest: "{{ nginx_confdir|d('/etc/nginx') }}/conf.d/proxy_timeouts.conf"
+    content: |2
+      proxy_connect_timeout {{ nginx.proxy_connect_timeout|d("300") }};
+      proxy_send_timeout    {{ nginx.proxy_send_timeout|d("300") }};
+      proxy_read_timeout    {{ nginx.proxy_read_timeout|d("300") }};
+      send_timeout          {{ nginx.send_timeout|d("300") }};
+
+- name: Set up NGINX http realip module
+  copy:
+    dest: "{{ nginx_confdir|d('/etc/nginx') }}/conf.d/ngx_http_realip_module.conf"
+    content: |2
+      {% for ip in nginx.realip.trusted_hosts %}
+      set_real_ip_from  {{ ip }};
+      {% endfor %}
+      real_ip_header    {{ nginx.realip.header|d("X-Forwarded-For") }};
+      real_ip_recursive {{ nginx.realip.recursive|d("off") }};
+  when: nginx.realip is defined
+
+- block:
+    - set_fact:
+        vhost_override:
+          default_server: True
+          server_name: default
+          server_root: /usr/share/nginx/html
+          body: |-2
+            {% if app.nginx_default_vhost is defined %}
+            {{ app.nginx_default_vhost }}
+            {% else %}
+                if ( $host ~ '^((?:[0-9]{1,3}\.){3}[0-9]{1,3}|default)$' )
+                    { return 301 https://{{ app.fqdn }}; }
+                location /.well-known/ { try_files $uri @redirect; }
+                location /             { return 301 https://$host$request_uri; }
+                location @redirect     { return 301 https://$host$request_uri; }
+            {%- endif %}
+          sefcontext:
+            - target: "/usr/share/nginx/html(/.*)?"
+              setype: httpd_sys_content_t
+            - target: "{{ app.path.webroot }}(/.*)?"
+              setype: httpd_sys_content_t
+            - target: "{{ app.path.webroot }}/public"
+              setype: httpd_sys_rw_content_t
+            - target: "{{ app.path.webroot }}/public/cache(/.*)?"
+              setype: httpd_sys_rw_content_t
+            - target: "{{ app.path.webroot }}/bootstrap/cache(/.*)?"
+              setype: httpd_sys_rw_content_t
+            - target: "{{ app.path.webroot }}/storage(/.*)?"
+              setype: httpd_sys_rw_content_t
+            - target: "{{ shared_folder }}(/.*)?"
+              setype: public_content_rw_t
+            - target: /usr/sbin/mariadbd
+              setype: mysqld_exec_t
+          seboolean:
+            - httpd_can_network_connect
+            - allow_smbd_anon_write
+            - allow_httpd_anon_write
+            - httpd_use_nfs
+    - name: Default virtualhost for NGINX
+      include_role:
+        name: nginx_virtualhost
+
+- block:
+    - set_fact:
+        vhost_override:
+          server_name: "{{ app.fqdn }}"
+          server_name_aliases: "{{ app.aliases|d([]) }}"
+          server_root: "{{ app.path.webroot }}/public"
+          body: |-2
+            {% if app.nginx_http is defined %}
+            {{ app.nginx_http }}
+            {% elif app.nossl is defined and app.nossl %}
+                sendfile off;
+                charset utf-8;
+                client_max_body_size 4096m;
+                index index.html index.htm index.php;
+            {% for header in app.headers|default(sample_cors) %}
+                add_header '{{ header.name }}' '{{ header.value }}'{% if header.force|d(False) %} always{% endif %};
+            {% endfor %}
+                location ~ /\.ht { deny all; }
+                location = /favicon.ico { access_log off; log_not_found off; }
+                location = /robots.txt  { access_log off; log_not_found off; }
+            {% for location in [ 'renders', 'font_previews' ] %}
+                location /{{ location }} { alias {{ shared_folder }}/{{ location }}; }
+            {% endfor %}
+                location "~^/frontends/[a-f0-9]{32}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location "~^/frontends/[a-f0-9]{1}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location / {
+                  try_files $uri $uri/ /index.php$is_args$args;
+                }
+                location = /index.php {
+                  fastcgi_split_path_info ^(.+\.php)(/.+)$;
+                  fastcgi_pass sdadmin;
+                  fastcgi_index index.php;
+                  include fastcgi_params;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  fastcgi_intercept_errors off;
+                  fastcgi_buffer_size 16k;
+                  fastcgi_buffers 4 16k;
+                  fastcgi_read_timeout 600;
+                }
+                {% if app.use_lua is defined %}
+                location ~ /api/(sd|fbd)/v1/jobs/[0-9a-f-]+/wait/3d {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_wait.lua";
+                }
+                location ~ /api/(sd|fbd)/v1/jobs {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_create.lua";
+                }
+                location ~ /api/v1/entity/jobs/subscribe {
+                       include fastcgi_params;
+                       fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+                       fastcgi_index index.php;
+                       fastcgi_param REQUEST_URI /api/v1/entity/jobs/subscribe;
+                       fastcgi_pass   sdadmin;
+                }
+                location /ready-renders {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/renders;
+                }
+                location /ready-converts {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/converts;
+                }
+                {% endif %}
+                location ~ \.php$ { return 403; }
+            {% else %}
+                location /.well-known/ { try_files $uri @redirect;
+                          alias /usr/share/nginx/html/.well-known/; }
+                location /             { return 301 https://$host$request_uri; }
+                location @redirect     { return 301 https://$host$request_uri; }
+            {% endif %}
+    - name: "NGINX virtualhost for public address `http://{{ app.fqdn }}`"
+      include_role:
+        name: nginx_virtualhost
+
+- name: Make sure NGINX is running - it participates in ACME challenge
+  service:
+    name: "{{ nginx_service|d('nginx') }}"
+    state: restarted
+  changed_when: False
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+    
+- name: Make sure ACME challenge directory exists
+  file:
+    path: /usr/share/nginx/html
+    state: directory
+    mode: 0755
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+
+- name: Ensure correct SELinux context for ACME challenge directory
+  command: >
+    /sbin/restorecon -R /usr/share/nginx/html
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+  changed_when: False
+
+- name: Set Certbot Route53 credentials (directory)
+  file:
+    path: /root/.aws
+    state: directory
+    owner: root
+    group: root
+    mode: 0700
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+    - app.envsubdomains|d(False)
+
+- name: Set Certbot Route53 credentials
+  copy:
+    content: |
+      [default]
+      aws_access_key_id={{ certbot.aws_access_key_id }}
+      aws_secret_access_key={{ certbot.aws_secret_access_key }}
+    dest: /root/.aws/config
+    owner: root
+    group: root
+    mode: 0600
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+    - app.envsubdomains|d(False)
+
+- name: Procure Let's Encrypt certificate
+  command: >
+    /bin/certbot certonly -m {{ letsencrypt.contact }}
+    --agree-tos --expand --non-interactive -d {{ app.fqdn }} --force-renewal
+    {% if app.envsubdomains|d(False) %}
+    --dns-route53 -d *.{{ app.fqdn }}
+    {% else %}
+    --webroot -w /usr/share/nginx/html
+    {% endif %}
+    {% for alias in app.aliases|d([]) %}
+    -d {{ alias }}
+    {% endfor %}
+    {% if app.use_lua|d(False) %}
+    --post-hook '/bin/openresty -s reload'
+    {% else %}
+    --post-hook '/usr/sbin/nginx -s reload'
+    {% endif %}
+  args:
+    creates: >-
+      {% if app.aliases is defined and app.aliases -%}
+      /etc/letsencrypt/{{ app.fqdn }}-aliases-{{ app.aliases|hash('sha1') }}.txt
+      {%- else -%}
+      /etc/letsencrypt/live/{{ app.fqdn }}/fullchain.pem
+      {%- endif %}
+  register: certbot_run
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+
+- name: Register multi-domain certificate
+  shell: "{{ item }}"
+  loop:
+    - "rm -f /etc/letsencrypt/{{ app.fqdn }}-aliases-*.txt"
+    - "echo {{ app.aliases|join(' ') }} > /etc/letsencrypt/{{ app.fqdn }}-aliases-{{ app.aliases|hash('sha1') }}.txt"
+  when:
+    - certbot_run is defined and certbot_run.changed
+    - app.aliases is defined and app.aliases
+
+- name: Make sure certbot renewal timer is enabled
+  service:
+    name: "{{ item.name }}"
+    state: "{{ item.state }}"
+    enabled: True
+  loop:
+    - name: certbot-renew.service
+      state: stopped
+    - name: certbot-renew.timer
+      state: started
+  when:
+    - app.ssl is not defined
+    - app.nossl is not defined or not app.nossl
+
+- name: Procure directory to store certificate and private key
+  file:
+    path: "/etc/ssl/{{ app.fqdn }}"
+    state: directory
+    owner: root
+    group: nginx
+    mode: 0750
+  when: app.ssl is defined
+
+- name: Store certificate and private key
+  copy:
+    dest: "{{ item.dest }}"
+    content: "{{ item.content }}"
+    owner: root
+    group: nginx
+    mode: 0640
+  with_items:
+    - dest: "/etc/ssl/{{ app.fqdn }}/fullchain.pem"
+      content: "{{ app.ssl.bundle }}"
+    - dest: "/etc/ssl/{{ app.fqdn }}/privkey.pem"
+      content: "{{ app.ssl.key }}"
+  loop_control:
+    label: "Storing {{ item.dest }}"
+  when: app.ssl is defined
+
+- block:
+    - set_fact:
+        vhost_override:
+          default_server: True
+          server_name: default
+          ssl: True
+          ssl_certificate_bundle: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/fullchain.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/fullchain.pem
+            {% endif %}
+          ssl_certificate_key: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/privkey.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/privkey.pem
+            {% endif %}
+          server_root: /usr/share/nginx/html
+          body: |-2
+            {% if app.nginx_default_ssl_vhost is defined %}
+            {{ app.nginx_default_ssl_vhost }}
+            {% else %}
+                location / { return 404; }
+            {%- endif %}
+    - name: Default ssl virtualhost for NGINX
+      include_role:
+        name: nginx_virtualhost
+  when: not app.nossl|d(False)
+
+- block:
+    - set_fact:
+        vhost_override:
+          server_name: "{{ app.fqdn }}"
+          server_name_aliases: "{{ app.aliases|d([]) }}"
+          ssl: True
+          ssl_certificate_bundle: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/fullchain.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/fullchain.pem
+            {% endif %}
+          ssl_certificate_key: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/privkey.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/privkey.pem
+            {% endif %}
+          server_root: "{{ app.path.webroot }}/public"
+          body: |-2
+            {% if app.nginx_https is defined %}
+            {{ app.nginx_https }}
+            {% else %}
+                sendfile off;
+                charset utf-8;
+                client_max_body_size 4096m;
+                index index.html index.htm index.php;
+            {% for header in app.headers|default(sample_cors) %}
+                add_header '{{ header.name }}' '{{ header.value }}'{% if header.force|d(False) %} always{% endif %};
+            {% endfor %}
+                location ~ /\.ht { deny all; }
+                location = /favicon.ico { access_log off; log_not_found off; }
+                location = /robots.txt  { access_log off; log_not_found off; }
+            {% for location in [ 'renders', 'font_previews' ] %}
+                location /{{ location }} { alias {{ shared_folder }}/{{ location }}; }
+            {% endfor %}
+                location "~^/frontends/[a-f0-9]{32}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location "~^/frontends/[a-f0-9]{1}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location / {
+                  try_files $uri $uri/ /index.php$is_args$args;
+                }
+                location = /index.php {
+                  fastcgi_split_path_info ^(.+\.php)(/.+)$;
+                  fastcgi_pass sdadmin;
+                  fastcgi_index index.php;
+                  include fastcgi_params;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  fastcgi_intercept_errors off;
+                  fastcgi_buffer_size 16k;
+                  fastcgi_buffers 4 16k;
+                  fastcgi_read_timeout 600;
+                }
+                {% if app.use_lua is defined %}
+                location ~ /api/(sd|fbd)/v1/jobs/[0-9a-f-]+/wait/3d {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_wait.lua";
+                }
+                location ~ /api/(sd|fbd)/v1/jobs {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_create.lua";
+                }
+                location ~ /api/v1/entity/jobs/subscribe {
+                       include fastcgi_params;
+                       fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+                       fastcgi_index index.php;
+                       fastcgi_param REQUEST_URI /api/v1/entity/jobs/subscribe;
+                       fastcgi_pass   sdadmin;
+                }
+                location /ready-renders {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/renders;
+                }
+                location /ready-converts {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/converts;
+                }
+                {% endif %}
+                location ~ \.php$ { return 403; }
+            {% endif %}
+    - name: "NGINX virtualhost for public address `https://{{ app.fqdn }}`"
+      include_role:
+        name: nginx_virtualhost
+  when: app.nossl is not defined or not app.nossl
+
+- block:
+    - set_fact:
+        vhost_override:
+          server_name: "~^(?<subdomain>\\w+)\\.{{ app.fqdn|replace('.', '\\.') }}$"
+          conf_file: "subdomain.{{ app.fqdn }}"
+          log_file: "{{ app.fqdn }}"
+          server_root: "{{ app.path.webroot }}/public"
+          body: |-2
+                sendfile off;
+                charset utf-8;
+                client_max_body_size 4096m;
+                index index.html index.htm index.php;
+            {% for header in app.headers|default(sample_cors) %}
+                add_header '{{ header.name }}' '{{ header.value }}'{% if header.force|d(False) %} always{% endif %};
+            {% endfor %}
+                location ~ /\.ht { deny all; }
+                location = /favicon.ico { access_log off; log_not_found off; }
+                location = /robots.txt  { access_log off; log_not_found off; }
+            {% for location in [ 'renders', 'font_previews' ] %}
+                location /{{ location }} { alias {{ shared_folder }}/{{ location }}; }
+            {% endfor %}
+                location "~^/frontends/[a-f0-9]{32}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location "~^/frontends/[a-f0-9]{1}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location / {
+                  try_files /$uri /$subdomain$uri/ /index.php$is_args$args;
+                }
+                location = /index.php {
+                  fastcgi_split_path_info ^(.+\.php)(/.+)$;
+                  fastcgi_pass sdadmin;
+                  fastcgi_index index.php;
+                  include fastcgi_params;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  fastcgi_param REQUEST_URI     "/$subdomain$request_uri";
+                  fastcgi_param SUBDOMAIN       $subdomain;
+                  fastcgi_intercept_errors off;
+                  fastcgi_buffer_size 16k;
+                  fastcgi_buffers 4 16k;
+                  fastcgi_read_timeout 600;
+                }
+                {% if app.use_lua is defined %}
+                location ~ /api/(sd|fbd)/v1/jobs/[0-9a-f-]+/wait/3d {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_wait.lua";
+                }
+                location ~ /api/(sd|fbd)/v1/jobs {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_create.lua";
+                }
+                location ~ /api/v1/entity/jobs/subscribe {
+                       include fastcgi_params;
+                       fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+                       fastcgi_index index.php;
+                       fastcgi_param REQUEST_URI /api/v1/entity/jobs/subscribe;
+                       fastcgi_pass   sdadmin;
+                }
+                location /ready-renders {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/renders;
+                }
+                location /ready-converts {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/converts;
+                }
+                {% endif %}
+                location ~ \.php$ { return 403; }
+    - name: "NGINX virtualhost for public environment aliases `http://*.{{ app.fqdn }}`"
+      include_role:
+        name: nginx_virtualhost
+  when:
+    - app.nossl is defined and app.nossl
+    - app.envsubdomains|d(False)
+
+- block:
+    - set_fact:
+        vhost_override:
+          server_name: "~^(?<subdomain>\\w+)\\.{{ app.fqdn|replace('.', '\\.') }}$"
+          conf_file: "subdomain.{{ app.fqdn }}"
+          log_file: "{{ app.fqdn }}"
+          ssl: True
+          ssl_certificate_bundle: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/fullchain.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/fullchain.pem
+            {% endif %}
+          ssl_certificate_key: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/privkey.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/privkey.pem
+            {% endif %}
+          server_root: "{{ app.path.webroot }}/public"
+          body: |-2
+            {% if app.nginx_https_subdomains is defined %}
+            {{ app.nginx_https_subdomains }}
+            {% else %}
+                sendfile off;
+                charset utf-8;
+                client_max_body_size 4096m;
+                index index.html index.htm index.php;
+            {% for header in app.headers|default(sample_cors) %}
+                add_header '{{ header.name }}' '{{ header.value }}'{% if header.force|d(False) %} always{% endif %};
+            {% endfor %}
+                location ~ /\.ht { deny all; }
+                location = /favicon.ico { access_log off; log_not_found off; }
+                location = /robots.txt  { access_log off; log_not_found off; }
+            {% for location in [ 'renders', 'font_previews' ] %}
+                location /{{ location }} { alias {{ shared_folder }}/{{ location }}; }
+            {% endfor %}
+                location "~^/frontends/[a-f0-9]{32}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location "~^/frontends/[a-f0-9]{1}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location / {
+                  try_files /$uri /$subdomain$uri/ /index.php$is_args$args;
+                }
+                location = /index.php {
+                  fastcgi_split_path_info ^(.+\.php)(/.+)$;
+                  fastcgi_pass sdadmin;
+                  fastcgi_index index.php;
+                  include fastcgi_params;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  fastcgi_param REQUEST_URI     "/$subdomain$request_uri";
+                  fastcgi_param SUBDOMAIN       $subdomain;
+                  fastcgi_intercept_errors off;
+                  fastcgi_buffer_size 16k;
+                  fastcgi_buffers 4 16k;
+                  fastcgi_read_timeout 600;
+                }
+                {% if app.use_lua is defined %}
+                location ~ /api/(sd|fbd)/v1/jobs/[0-9a-f-]+/wait/3d {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_wait.lua";
+                }
+                location ~ /api/(sd|fbd)/v1/jobs {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_create.lua";
+                }
+                location ~ /api/v1/entity/jobs/subscribe {
+                       include fastcgi_params;
+                       fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+                       fastcgi_index index.php;
+                       fastcgi_param REQUEST_URI /api/v1/entity/jobs/subscribe;
+                       fastcgi_pass   sdadmin;
+                }
+                location /ready-renders {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/renders;
+                }
+                location /ready-converts {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/converts;
+                }
+                {% endif %}
+                location ~ \.php$ { return 403; }
+            {% endif %}
+    - name: "NGINX virtualhost for public environment aliases `https://*.{{ app.fqdn }}`"
+      include_role:
+        name: nginx_virtualhost
+  when:
+    - app.nossl is not defined or not app.nossl
+    - app.envsubdomains|d(False)
+
+- block:
+    - set_fact:
+        vhost_override:
+          server_name: "{{ app.ssl.redirect }}"
+          ssl: True
+          ssl_certificate_bundle: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/fullchain.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/fullchain.pem
+            {% endif %}
+          ssl_certificate_key: >-
+            {% if app.ssl is defined %}
+            /etc/ssl/{{ app.fqdn }}/privkey.pem
+            {% else %}
+            /etc/letsencrypt/live/{{ app.fqdn }}/privkey.pem
+            {% endif %}
+          server_root: "/dev/null"
+          body: "return 301 https://{{ app.fqdn }};"
+    - name: "NGINX optional ssl redirect(s) to `https://{{ app.fqdn }}`"
+      include_role:
+        name: nginx_virtualhost
+  when:
+    - app.ssl is defined
+    - app.ssl.redirect is defined and app.ssl.redirect
+
+- block:
+    - set_fact:
+        vhost_override:
+          server_name: "{{ app.privatedn }}"
+          server_name_aliases: "{{ app.privatedn_aliases|d([]) }}"
+          server_root: "{{ app.path.webroot }}/public"
+          body: |-2
+                sendfile off;
+                charset utf-8;
+                client_max_body_size 4096m;
+                index index.html index.htm index.php;
+            {% for header in app.headers|default(sample_cors) %}
+                add_header '{{ header.name }}' '{{ header.value }}'{% if header.force|d(False) %} always{% endif %};
+            {% endfor %}
+                {%- if vpc_network_prefix is defined %}
+                allow {{ vpc_network_prefix }};
+                {% endif -%}
+                {%- for trusted_host in app.trusted_hosts|default([])%}
+                allow {{ trusted_host }};
+                {% endfor -%}
+                allow 127.0.0.0/8;
+                deny all;
+                location ~ /\.ht { deny all; }
+                location = /favicon.ico { access_log off; log_not_found off; }
+                location = /robots.txt  { access_log off; log_not_found off; }
+            {% for location in [ 'renders', 'font_previews' ] %}
+                location /{{ location }} { alias {{ shared_folder }}/{{ location }}; }
+            {% endfor %}
+                location "~^/frontends/[a-f0-9]{32}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location "~^/frontends/[a-f0-9]{1}/.*" { root {{ shared_folder }}; location ~ /active/ { add_header 'Cache-Control' 'no-cache'; } }
+                location / {
+                  try_files $uri $uri/ /index.php$is_args$args;
+                }
+                location = /index.php {
+                  fastcgi_split_path_info ^(.+\.php)(/.+)$;
+                  fastcgi_pass sdadmin;
+                  fastcgi_index index.php;
+                  include fastcgi_params;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  fastcgi_intercept_errors off;
+                  fastcgi_buffer_size 16k;
+                  fastcgi_buffers 4 16k;
+                  fastcgi_read_timeout 600;
+                }
+                {% if app.use_lua is defined %}
+                location ~ /api/(sd|fbd)/v1/jobs/[0-9a-f-]+/wait/3d {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_wait.lua";
+                }
+                location ~ /api/(sd|fbd)/v1/jobs {
+                    client_body_buffer_size 1m;
+                    set $redis_host "{{ app.redis.host | default('127.0.0.1') }}";
+                    set $job_id "";
+                    set $job_uid "";
+                    content_by_lua_file "{{ app.path.webroot }}/config/nginx/job_create.lua";
+                }
+                location ~ /api/v1/entity/jobs/subscribe {
+                       include fastcgi_params;
+                       fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+                       fastcgi_index index.php;
+                       fastcgi_param REQUEST_URI /api/v1/entity/jobs/subscribe;
+                       fastcgi_pass   sdadmin;
+                }
+                location /ready-renders {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/renders;
+                }
+                location /ready-converts {
+                    error_page 405 =200 $uri;
+                    add_header 'X-Job-Id' $job_id;
+                    add_header 'X-Job-Uid' $job_uid;
+                    alias /data/shared/converts;
+                }
+                {% endif %}
+                location ~ \.php$ { return 403; }
+    - name: "NGINX virtualhost for local address `http://{{ app.privatedn|d('undefined') }}`"
+      include_role:
+        name: nginx_virtualhost
+  when: app.privatedn is defined and app.privatedn
+
+- name: Clean-up config directory
+  file:
+    path: "/etc/nginx/conf.d/ssl.{{ app.fqdn }}.conf"
+    state: absent
+  when: app.nossl is defined and app.nossl
+
+- name: Make sure services are enabled and have been (eventually) started
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: True
+  loop:
+    - "{{ nginx_service|d('nginx') }}"
+    - "{{ fpm_service|d('php-fpm') }}"
+    - auditd
+  when:
+    - not ansible_check_mode
+
+- name: Force daemons to re-read configs in case they`ve been running on previous step
+  service:
+    name: "{{ item }}"
+    state: reloaded
+  loop:
+    - "{{ nginx_service|d('nginx') }}"
+    - "{{ fpm_service|d('php-fpm') }}"
+  changed_when: False
+  when:
+    - not ansible_check_mode
+
+- name: Procure document root directory
+  file:
+    path:  "{{ app.path.webroot }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: "0755"
+
+- name: Set SELinux context on directories
+  shell: "restorecon {{ item }}"
+  loop:
+    - "{{ shared_folder }}"
+    - "{{ shared_folder }}/renders"
+    - "{{ shared_folder }}/binaries"
+    - "{{ shared_folder }}/frontends"
+    - "{{ shared_folder }}/font_previews"
+    - "{{ app.path.webroot }}"

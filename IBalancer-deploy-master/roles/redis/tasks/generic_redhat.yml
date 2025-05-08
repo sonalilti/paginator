@@ -1,0 +1,5 @@
+---
+- name: Procure packages
+  yum:
+    name:
+      - redis

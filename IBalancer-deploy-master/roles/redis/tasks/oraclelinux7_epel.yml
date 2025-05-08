@@ -1,0 +1,11 @@
+---
+- name: Procure epel repository
+  yum:
+    name: oracle-epel-release-el7
+    state: present
+  when: skipreposetup is not defined or not skipreposetup
+
+- name: Procure packages
+  yum:
+    name:
+      - redis

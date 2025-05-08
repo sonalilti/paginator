@@ -1,0 +1,32 @@
+- name: sanity check mandatory variables
+  import_tasks: assert_variables.yml
+
+- name: manage packages
+  debug:
+    msg: "{{ansible_distribution|lower}}{{ansible_distribution_major_version}}_{{nginx_vars.source}}.yml"
+
+- name: manage packages
+  debug:
+    msg: "generic_{{ ansible_os_family|lower }}_{{nginx_vars.source}}.yml"
+
+- name: manage packages
+  include_tasks: "{{ task_file }}"
+  with_first_found:
+    - files:
+        - "{{ansible_distribution|lower}}{{ansible_distribution_major_version}}_{{nginx_vars.source}}.yml"
+        - "generic_{{ ansible_os_family|lower }}_{{nginx_vars.source}}.yml"
+      skip: False
+  loop_control:
+    loop_var: task_file
+
+- name: set defaults
+  import_tasks: default_configuration.yml
+
+- set_fact:
+    nginx_service: "rh-nginx{{ nginx.version|string|replace('.', '') }}-nginx"
+  when: nginx.source|d('epel') == 'rhscl'
+
+- set_fact:
+    nginx_confdir: "/etc/opt/rh/rh-nginx{{ nginx.version|string|replace('.', '') }}/nginx"
+  when: nginx.source|d('epel') == 'rhscl'
+
